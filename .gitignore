@@ -3,6 +3,8 @@ build/obj
 *.o
 *.elf
 *.hex
+*~
+.*.s[a-z]p
 
 .project
 .cproject

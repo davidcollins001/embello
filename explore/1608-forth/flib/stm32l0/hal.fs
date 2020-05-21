@@ -27,9 +27,11 @@ $40021000 constant RCC
      RCC $04 + constant RCC-ICSCR
      RCC $0C + constant RCC-CFGR
      RCC $28 + constant RCC-APB1RSTR
+     RCC $2C + constant RRCC_IOPENR
      RCC $30 + constant RCC-AHBENR
      RCC $34 + constant RCC-APB2ENR
      RCC $38 + constant RCC-APB1ENR
+     RCC $3C + constant RCC_IOPSMENR
      RCC $4C + constant RCC-CCIPR
 
 $40022000 constant FLASH
@@ -55,7 +57,7 @@ $40022000 constant FLASH
   8 bit RCC-CR ! ;
 
 : 65KHz ( -- )  \ set main clock to 65 KHz, assuming it was set to 2.1 MHz
-  %111 13 lshift RCC-ICSCR bic!  65536 clock-hz ! 
+  %111 13 lshift RCC-ICSCR bic!  65536 clock-hz !
   us/cycl-factor ;
 
 : 2.1MHz ( -- )  \ set the main clock to 2.1 MHz (MSI)
@@ -64,7 +66,7 @@ $40022000 constant FLASH
   begin 9 bit RCC-CR bit@ until   \ wait for MSIRDY
   %00 RCC-CFGR !                  \ revert to MSI @ 2.1 MHz, no PLL
   $101 RCC-CR !                   \ turn off HSE, and PLL
-  2097000 clock-hz ! 
+  2097000 clock-hz !
   us/cycl-factor ;
 
 : 16MHz ( -- )  \ set the main clock to 16 MHz (HSI)
@@ -72,7 +74,7 @@ $40022000 constant FLASH
   %01 RCC-CFGR !                  \ revert to HSI16, no PLL
   1 RCC-CR !                      \ turn off MSI, HSE, and PLL
   0 bit FLASH-ACR bic!            \ Set the flash latency to 0 WS
-  16000000 clock-hz ! 
+  16000000 clock-hz !
   us/cycl-factor ;
 
 : 32MHz ( -- )  \ set the main clock to 32 MHz, using the PLL
@@ -90,7 +92,7 @@ $40022000 constant FLASH
   24 bit RCC-CR bis!                       \ set RCC_CR_PLLON
   begin 25 bit RCC-CR bit@ until           \ wait for PLLRDY
   RCC-CFGR dup @ %11 or swap !             \ set system clk source PLL
-  32000000 clock-hz ! 
+  32000000 clock-hz !
   us/cycl-factor ;
 
 0 variable ticks

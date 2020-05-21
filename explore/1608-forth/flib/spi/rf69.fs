@@ -12,6 +12,7 @@
        $28 constant RF:IRQ2
        $2F constant RF:SYN1
        $31 constant RF:SYN3
+       $37 constant RF:CONF
        $39 constant RF:ADDR
        $3A constant RF:BCAST
        $3C constant RF:THRESH
@@ -30,14 +31,22 @@
 
      7 bit constant RF:IRQ1_MRDY
      6 bit constant RF:IRQ1_RXRDY
+     5 bit constant RF:IRQ1_TXRDY
+     4 bit constant RF:IRQ1_PLLLOCK
      3 bit constant RF:IRQ1_RSSI
      2 bit constant RF:IRQ1_TIMEOUT
+     1 bit constant RF:IRQ1_AUTO
      0 bit constant RF:IRQ1_SYNC
 
+     7 bit constant RF:IRQ2_FIFO_FULL
      6 bit constant RF:IRQ2_FIFO_NE
+     5 bit constant RF:IRQ2_FIFO_LEVEL
+     4 bit constant RF:IRQ2_FIFO_OVERRUN
      3 bit constant RF:IRQ2_SENT
      2 bit constant RF:IRQ2_RECVD
      1 bit constant RF:IRQ2_CRCOK
+
+        66 constant RF:MAXDATA
 
    0 variable rf.mode  \ last set chip mode
    0 variable rf.last  \ flag used to fetch RSSI only once per packet

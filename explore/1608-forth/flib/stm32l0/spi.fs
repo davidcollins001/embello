@@ -121,4 +121,4 @@ $40013000 constant SPI1
   %0000001101000100 SPI1-CR1 !  \ clk/2, i.e. 8 MHz, master
   SPI1-SR @ drop  \ appears to be needed to avoid hang in some cases
   2 bit SPI1-CR2 bis!  \ SS output enable
-;
+  ;
