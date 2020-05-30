@@ -18,6 +18,7 @@
 
 $40010000 constant AFIO
 \    AFIO $4 + constant AFIO-MAPR
+    AFIO  $8 + constant AFIO-EXTICR1
 
 $40013800 constant USART1
    USART1 $C + constant USART1-BRR
@@ -27,7 +28,7 @@ $40021000 constant RCC
      RCC $04 + constant RCC-ICSCR
      RCC $0C + constant RCC-CFGR
      RCC $28 + constant RCC-APB1RSTR
-     RCC $2C + constant RRCC_IOPENR
+     RCC $2C + constant RCC_IOPENR
      RCC $30 + constant RCC-AHBENR
      RCC $34 + constant RCC-APB2ENR
      RCC $38 + constant RCC-APB1ENR
