@@ -13,6 +13,7 @@
        $2F constant RF:SYN1
        $31 constant RF:SYN3
        $37 constant RF:CONF
+       $38 constant RF:PAYLOAD_LEN
        $39 constant RF:ADDR
        $3A constant RF:BCAST
        $3C constant RF:THRESH
@@ -46,7 +47,7 @@
      2 bit constant RF:IRQ2_RECVD
      1 bit constant RF:IRQ2_CRCOK
 
-         3 constant RF:HDR_LEN
+         2 constant RF:HDR_LEN
         66 constant RF:MAXDATA
 
    0 variable rf.mode  \ last set chip mode
@@ -54,8 +55,12 @@
    0 variable rf.rssi  \ RSSI signal strength of last reception
    0 variable rf.lna   \ Low Noise Amplifier setting (set by AGC)
    0 variable rf.afc   \ Auto Frequency Control offset
+   0 variable rf.recvd \ flag to show packet was received
   66 buffer:  rf.buf   \ buffer with last received packet data
-  rf.buf RF:HDR_LEN + constant rf.data      \ start of data
+      rf.buf constant rf.len
+  rf.buf 1 + constant rf.to_addr
+  rf.buf 2 + constant rf.data
+
 
 8683 variable rf.freq    \ frequency (auto-scaled to 100..999 MHz)
   42 variable rf.group   \ network group (1..250)
@@ -91,11 +96,12 @@ decimal align
 : rf! ( b reg -- ) $80 or rf!@ drop ;
 : rf@ ( reg -- b ) 0 swap rf!@ ;
 : rf-h! ( h -- ) dup $FF and swap 8 rshift rf! ;
-\ TODO try burst mode
 : rf-n@spi ( addr len -- )  \ read N bytes from the FIFO
-  0 do  RF:FIFO rf@ over c! 1+  loop drop ;
+  +spi RF:FIFO >spi 0 do spi> over c! 1+  loop drop -spi
+  ;
 : rf-n!spi ( addr len -- )  \ write N bytes to the FIFO
-  0 do  dup c@ RF:FIFO rf! 1+  loop drop ;
+  +spi RF:FIFO $80 or >spi 0 do dup c@ >spi 1+ loop drop -spi
+  ;
 
 : rf-mode! ( b -- )  \ set the radio mode, and store a copy in a variable
   dup rf.mode !
@@ -169,47 +175,45 @@ decimal align
   RF:SYN3 rf@ dup 4 lshift xor dup 2 lshift xor $C0 and ;
 
 : rf-pkt-len ( -- n )
-  \ read payload len reg if fixed length packet otherwise read from packet
-  $37 rf@ $80 and if $38 rf@ else RF:FIFO rf@ RF:MAXDATA min then
+  RF:PAYLOAD_LEN rf@
+  \ check for fixed/variable payload and compare with payload len reg
+  dup RF:CONF rf@ 7 bit and if RF:FIFO rf@ min swap drop then
   ;
-: rf-read-fifo ( n -- )                     \ read n bytes from radio into buffer
-  0 rf.rssi !  0 rf.afc !
-  rf-status
-  RF:M_STDBY rf-mode!
-  dup rf.buf c!
-  rf.buf 1+ swap rf-n@spi
+: rf-read-fifo ( n -- )                    \ read n bytes from radio into internal buffer
+  \ might have to happen before standby
+  rf-pkt-len dup rf.len c! rf.buf 1+ swap rf-n@spi
+
+  1 rf.recvd !
   ;
 
 : rf-info ( -- )  \ display reception parameters as hex string
   rf.freq @ h.4 rf.group @ h.2 rf.rssi @ h.2 rf.lna @ h.2 rf.afc @ h.4 ;
 
-: rf-buf-len! RF:HDR_LEN + rf.buf c! ;
-: rf-buf-node! rf.buf + c! ;
-\ : rf-buf-data! rf.data rot move ;
-: rf-build-payload ( x n -- ) \ rf-addr len
-  dup
-  rf-buf-len!
-  swap 1 rf-buf-node!
-  rf.nodeid @ 2 rf-buf-node!
-  \ rf-buf-data!
-  drop
+: rf-irq-exit ( -- ) 1 bit EXTI-PR bis! ;
+: rf-handle-irq ( -- ) 		\ setup interrupt from rf69 -> DI00 -> PB0 (exti0) -> jnz
+  \ packet received
+  rf.mode @ RF:M_RX = if
+    RF:IRQ2 rf@ RF:IRQ2_RECVD and if
+      0 rf.rssi !  0 rf.afc ! rf-rssi rf-status
+      RF:M_STDBY rf-mode!
+      rf-read-fifo
+      ." rcvd "
+      rf-irq-exit
+    then
+  then
 
-  \ dup rf-parity or RF:FIFO rf!
-  \ $C0 and rf.nodeid @ or RF:FIFO rf!
-  \ dup 2+ RF:FIFO rf!
+  \ payload sent
+  rf.mode @ RF:M_TX = if
+    RF:IRQ2 rf@ RF:IRQ2_SENT and if
+      RF:M_STDBY rf-mode!
+      ." sent "
+      rf-irq-exit
+    then
+  then
   ;
-
-: rf-packet-handler ( n -- )
-  ." RF69 " rf-info space ." ( " rf.rssi @ . ." )" space
-  \ TODO not using circular buffer
-  1 max 0 do rf.buf i + c@ h.2 space loop cr
-  ;
-
-\ TODO auto-modes/acks
-\ setup interrupt from rf69 -> DI00 -> PB0 (exti0) -> jnz
-: rf-irq-init ( f-addr -- )             \ set up interrupt handler for radio
+: rf-irq-init ( -- )             \ set up interrupt handler for radio
   \ link exti1 irq with radio
-  irq-exti0_1 !
+  ['] rf-handle-irq irq-exti0_1 !
 
      0 bit RCC-APB2ENR  bis!     \ enable setting SYSCFGEN
      1 bit RCC_IOPENR   bis!     \ enable GPIO B
@@ -223,40 +227,13 @@ decimal align
 
      IMODE-HIGH PB0 io-mode!
   ;
-: rf-irq-exit ( -- ) 1 bit EXTI-PR bis! ;
-\ TODO merge irq-rf-pkt-ready / irq-rf-pkt-sent and check RF:IRQ2?
-: irq-rf-pkt-ready ( -- )
-  rf-pkt-len dup rf-read-fifo
 
-  \ TODO handle packet action instead of displaying - rf-packet-handler @ execute
-  rf-packet-handler rf-irq-exit RF:M_RX rf-mode!
-  ;
-: irq-rf-pkt-sent ( -- ) RF:M_STDBY rf-mode! rf-irq-exit ;
-
-
-\ \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ \
-\ this is the intended public API for the RF69 driver
+\ \\\\\\\\\\\\\\\\\\\\\\\\\ PUBLIC API \\\\\\\\\\\\\\\\\\\\\\\\\ \
 
 : rf-power ( n -- )  \ change TX power level (0..31)
   RF:PA rf@ $E0 and or RF:PA rf! ;
 
 : rf-sleep ( -- ) RF:M_SLEEP rf-mode! ;  \ put radio module to sleep
-
-\ TODO acks
-: rf-ack? ( ms -- b ) \ waits ms milliseconds for an ACK and returns #bytes recv'd
-  0 rf.rssi !  0 rf.afc !
-  RF:M_RX rf-mode!
-  0 do
-    rf-status \ capture rssi, afc etc.
-    RF:IRQ2 rf@  RF:IRQ2_CRCOK and if
-      RF:FIFO rf@ 66 min \ fetch length and limit
-      rf.buf over rf-n@spi
-      unloop exit
-    then
-    1 ms
-  loop
-  RF:M_STDBY rf-mode! \ kill RX
-  0 ;
 
 : rf-init ( addr -- )  \ init RFM69 with current rf.group and rf.freq values
   rf.group @ rf.freq @ rot rf-ini ;
@@ -271,19 +248,27 @@ decimal align
     loop
   $10 +loop ;
 
-: rf-listen ( -- )
-  %01 6 lshift $25 rf!      \ set trigger for PacketReady on DIO0
-  ['] irq-rf-pkt-ready rf-irq-init
+: rf-recv ( -- )
+  %01 6 lshift $25 rf!                \ set trigger for PacketReady on DIO0
+  rf-irq-init
+  \ TODO check for existing outgoing message
   RF:M_RX rf-mode!
+  0 rf.recvd !
   ;
 
-: rf-send ( addr count -- )   \ send out one packet for node running rf12demo
-  %00 6 lshift $25 rf!              \ set trigger for PacketSent on DIO0
-  ['] irq-rf-pkt-sent rf-irq-init
+: rf-raw-send ( buf len -- )          \ send out one packet for node
+  %00 6 lshift $25 rf!                \ set trigger for PacketSent on DIO0
+  rf-irq-init
+  \ TODO check for existing outgoing message
 
   RF:M_STDBY rf-mode!
   ( addr count ) rf-n!spi
   RF:M_TX rf-mode!
+  ;
+
+: rf-send ( buf addr count -- )       \ send out one packet for node running rf12demo
+  swap 2 + tuck                       \ add header size to len
+  0 rf! 0 rf! rf-raw-send
   ;
 
 \ rf.
