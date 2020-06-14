@@ -1,7 +1,7 @@
 \ rf69 driver
 
-\ ******** OUTDATED ********
-\ ******** NOT FLASHED ********
+\ ******** UPDATED ********
+\ ******** FLASHED ********
 
 \ --------------------------------------------------
 \  Configuration
@@ -74,7 +74,6 @@ RF:M_STDBY variable rf.idle-mode  \ default idle mode
          0 variable rf.fixed-pkt# \ length of fixed packet or 0 for variable
         66 buffer:  rf.buf        \ buffer with last received packet data
     rf.buf constant rf.len
- rf.buf 1+ constant rf.data
 
       8683 variable rf.freq    \ frequency (auto-scaled to 100..999 MHz)
         42 variable rf.group   \ network group (1..250)
@@ -163,22 +162,11 @@ decimal
 : rf-group!  ( u -- ) dup rf.group  ! RF:SYN3 rf! ;  \ set the net group (1..250)
 : rf-nodeid! ( u -- ) dup rf.nodeid ! RF:ADDR rf! ; \ set the filter node id
 
-: rf-fixed-pkt! ( -- )                     \ determine fixed packet and size
-  RF:CONF rf@ 7 bit and if
-    0 rf.fixed-pkt# !
-  else
-    RF:PAYLOAD_LEN rf@ rf.fixed-pkt# !
-  then
-  ;
+\ read full radio buffer instead of first byte for variable packet format
 : rf-pkt# ( -- n )                         \ pkt length, fetch from radio if variable
-  rf.fixed-pkt# @ if
-    rf.fixed-pkt# @
-  else
-    RF:FIFO rf@ RF:MAXDATA min
-  then
-  dup rf.len c!
+  RF:PAYLOAD_LEN rf@ RF:MAXDATA min
   ;
-: rf-fifo@ ( -- ) rf.data rf-pkt# rf-n@spi ;
+: rf-fifo@ ( -- ) rf.buf rf-pkt# rf-n@spi ;
 
 : rf-irq-exit ( -- ) 1 bit EXTI-PR bis! ;
 : rf-irq-tx
@@ -199,7 +187,7 @@ decimal
     rf-irq-exit
   then
   ;
-: rf-handle-irq ( -- )      \ setup interrupt from rf69 -> DI00 -> PB0 (exti0) -> jnz
+: rf-irq-handler ( -- )      \ setup interrupt from rf69 -> DI00 -> PB0 (exti0) -> jnz
   ." int " binary rf:irq2 rf@ rf:irq1 rf@ ." (" . space . rf.mode @ . ." )" hex
   \ RF:IRQ2 rf@
   rf.mode @
@@ -209,7 +197,7 @@ decimal
   endcase
   ;
 : rf-irq-init ( -- )             \ set up interrupt handler for radio
-  ['] rf-handle-irq irq-exti0_1 !
+  ['] rf-irq-handler irq-exti0_1 !
 
      0 bit RCC-APB2ENR  bis!     \ enable setting SYSCFGEN
      1 bit RCC_IOPENR   bis!     \ enable GPIO B
@@ -268,7 +256,6 @@ decimal
   ( group ) rf-group!
   ( freq )  rf-freq!
 
-  rf-fixed-pkt!                             \ set fixed packet flag/length
   rf-irq-init                               \ setup interrupts for radio
   rf-idle-mode!
   ;
