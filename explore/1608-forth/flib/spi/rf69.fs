@@ -1,18 +1,26 @@
 \ rf69 driver
 
+\ ******** OUTDATED ********
+\ ******** NOT FLASHED ********
+
 \ --------------------------------------------------
 \  Configuration
 \ --------------------------------------------------
 
+\ TODO need to move registers to central location
+NVIC-EN0R $304 + constant NVIC-IPR1
+
        $00 constant RF:FIFO
        $01 constant RF:OP
        $07 constant RF:FRF
+       $10 constant RF:REG_VERSION
        $11 constant RF:PA_LEVEL
        $18 constant RF:LNA
        $1F constant RF:AFC
        $24 constant RF:RSSI
        $27 constant RF:IRQ1
        $28 constant RF:IRQ2
+       $29 constant RF:RSSI_THRESH
        $2F constant RF:SYN1
        $31 constant RF:SYN3
        $37 constant RF:CONF
@@ -62,32 +70,28 @@ RF:M_STDBY variable rf.idle-mode  \ default idle mode
          0 variable rf.power      \ power setting
          0 variable rf.afc        \ Auto Frequency Control offset
      false variable rf.recvd      \ flag to show packet was received
-      true variable rf.can-send   \ flag to show packet can be sent
-         0 variable rf.fixed-pkt# \ flag to show fixed packet length
+         0 variable rf.recvd#     \ payload received counter
+         0 variable rf.fixed-pkt# \ length of fixed packet or 0 for variable
         66 buffer:  rf.buf        \ buffer with last received packet data
+    rf.buf constant rf.len
+ rf.buf 1+ constant rf.data
 
-8683 variable rf.freq    \ frequency (auto-scaled to 100..999 MHz)
-  42 variable rf.group   \ network group (1..250)
-  61 variable rf.nodeid  \ node ID of this node (1..63)
+      8683 variable rf.freq    \ frequency (auto-scaled to 100..999 MHz)
+        42 variable rf.group   \ network group (1..250)
+        61 variable rf.nodeid  \ node ID of this node (1..63)
 
 create rf:init  \ initialise the radio, each 16-bit word is <reg#,val>
 hex
-  0200 h, \ packet mode, fsk
-  0302 h, 048A h, \ bit rate 49,261 hz
-  0505 h, 06C3 h, \ 90.3kHzFdev -> modulation index = 2
   0B20 h, \ low M
-  1942 h, 1A42 h, \ RxBw 125khz, AFCBw 125khz
+  119F h, \ pa level
   1E0C h, \ AFC auto-clear, auto-on
-  \ 1E2C h,
   2607 h, \ disable clkout
   29C4 h, \ RSSI thres -98dB
-  2B40 h, \ RSSI timeout after 128 bytes
+  \ 2B40 h, \ RSSI timeout after 128 bytes
   2E90 h, \ sync size 3 bytes
   2FAA h, \ sync1: 0xAA -- this is really the last preamble byte
   302D h, \ sync2: 0x2D -- actual sync byte
   312A h, \ sync3: network group
-  \ 37D0 h, \ drop pkt if CRC fails
-  37DA h, \ deliver even if CRC fails
   3842 h, \ max 62 byte payload
   3C8F h, \ fifo thres
   3D12 h, \ PacketConfig2, interpkt = 1, autorxrestart on
@@ -95,14 +99,22 @@ hex
   0 h,  \ sentinel
 decimal align
 
+create rf:GFSK_Rb250Fd250   \ GFSK, Whitening, Rb = 250kbs,  Fd = 250kHz
+hex
+  0201 h,           \ GFSK BT = 1.0
+  0300 h, 0480 h,   \ bit rate  250kbs
+  0510 h, 0600 h,   \ Fdev 250kHz
+  19E0 h, 1AE0 h,   \ RxBw 125khz, AFCBw 125khz
+  37D2 h,           \ variable, dc white, crc, node filt
+  0 h,
+decimal
+
 \ --------------------------------------------------
 \  Internal Helpers
 \ --------------------------------------------------
 
 : rf-recvd-s! ( -- )  true rf.recvd ! ;
 : rf-recvd-c! ( -- ) false rf.recvd ! ;
-: rf-can-send-s! ( -- )   true  rf.can-send ! ;
-: rf-can-send-c! ( -- )  false  rf.can-send ! ;
 
 \ r/w access to the RF registers
 : rf!@ ( b reg -- b ) +spi >spi >spi> -spi ;
@@ -116,11 +128,15 @@ decimal align
   +spi RF:FIFO $80 or >spi 0 ?do dup c@ >spi 1+ loop drop -spi
   ;
 
+: rf-mode-ready
+  \ TODO interrupts DIO5
+  begin  RF:IRQ1 rf@  RF:IRQ1_MRDY and  until
+  ;
 : rf-mode! ( b -- )  \ set the radio mode, and store a copy in a variable
   dup rf.mode @ <> if
     dup rf.mode !
     RF:OP rf@  $E3 and  or RF:OP rf!
-    begin  RF:IRQ1 rf@  RF:IRQ1_MRDY and  until
+    rf-mode-ready
   else
     drop
   then
@@ -130,6 +146,7 @@ decimal align
 : rf-tx-mode! ( -- ) RF:M_TX rf-mode! ;
 : rf-sleep ( -- ) RF:M_SLEEP rf-mode! ;
 
+\ TODO use burst mode
 : rf-config! ( addr -- ) \ load many registers from <reg,value> array, zero-terminated
   RF:M_STDBY rf-mode!    \ some regs don't program in sleep mode, go figure...
   begin  dup h@  ?dup while  rf-h!  2+ repeat drop
@@ -146,48 +163,52 @@ decimal align
 : rf-group!  ( u -- ) dup rf.group  ! RF:SYN3 rf! ;  \ set the net group (1..250)
 : rf-nodeid! ( u -- ) dup rf.nodeid ! RF:ADDR rf! ; \ set the filter node id
 
-: rf-fixed-pkt! ( -- )                      \ determine fixed packet and size
+: rf-fixed-pkt! ( -- )                     \ determine fixed packet and size
   RF:CONF rf@ 7 bit and if
-    RF:PAYLOAD_LEN rf@ rf.fixed-pkt# !
-  else
     0 rf.fixed-pkt# !
+  else
+    RF:PAYLOAD_LEN rf@ rf.fixed-pkt# !
   then
   ;
-: rf-pkt#@ ( -- n )                         \ pkt length, fetch from radio if variable
+: rf-pkt# ( -- n )                         \ pkt length, fetch from radio if variable
   rf.fixed-pkt# @ if
     rf.fixed-pkt# @
   else
     RF:FIFO rf@ RF:MAXDATA min
   then
+  dup rf.len c!
   ;
-: rf-fifo@ ( -- ) rf.buf rf-pkt#@ rf-n@spi ;
+: rf-fifo@ ( -- ) rf.data rf-pkt# rf-n@spi ;
 
 : rf-irq-exit ( -- ) 1 bit EXTI-PR bis! ;
-: rf-handle-irq ( -- ) 		\ setup interrupt from rf69 -> DI00 -> PB0 (exti0) -> jnz
-  \ payload sent
-  rf.mode @ RF:M_TX = if
-    RF:IRQ2 rf@ RF:IRQ2_SENT and if
-      rf-idle-mode!
-      ." sent "
-      rf-can-send-s!
-      rf-irq-exit
-    then
-  else
-    \ packet received
-    rf.mode @ RF:M_RX = if
-      RF:IRQ2 rf@ RF:IRQ2_RECVD and if
-        RF:RSSI rf@ 1 rshift negate rf.rssi !
-        rf-idle-mode!
-        rf-fifo@
-        ." rcvd "
-        rf-recvd-s!
-        rf-irq-exit
-      then
-    then
+: rf-irq-tx
+  RF:IRQ2 rf@ RF:IRQ2_SENT and if
+    rf-idle-mode!
+    ." sent "
+    rf-irq-exit
   then
   ;
+: rf-irq-rx
+  RF:IRQ2 rf@ RF:IRQ2_RECVD and if
+    RF:RSSI rf@ 1 rshift negate rf.rssi !
+    rf-idle-mode!
+    rf-fifo@
+    1 rf.recvd# +!
+    ." rcvd " cr
+    rf-recvd-s!
+    rf-irq-exit
+  then
+  ;
+: rf-handle-irq ( -- )      \ setup interrupt from rf69 -> DI00 -> PB0 (exti0) -> jnz
+  ." int " binary rf:irq2 rf@ rf:irq1 rf@ ." (" . space . rf.mode @ . ." )" hex
+  \ RF:IRQ2 rf@
+  rf.mode @
+  case
+    RF:M_TX of rf-irq-tx endof
+    RF:M_RX of rf-irq-rx endof
+  endcase
+  ;
 : rf-irq-init ( -- )             \ set up interrupt handler for radio
-  \ link exti1 irq with radio
   ['] rf-handle-irq irq-exti0_1 !
 
      0 bit RCC-APB2ENR  bis!     \ enable setting SYSCFGEN
@@ -199,6 +220,8 @@ decimal align
         0 bit EXTI-RTSR bis!     \ trigger on PB<0> rising edge
 
         5 bit NVIC-EN0R bis!     \ enable EXTI0_1 interrupt 5
+         \ $F00 NVIC-IPR1 bis!     \ interrupt priority
+         $100 NVIC-IPR1 bis!     \ interrupt priority
 
      IMODE-HIGH PB0 io-mode!
   ;
@@ -215,10 +238,6 @@ decimal align
     then
   then ;
 
-\ TODO new header
-: rf-parity ( -- u )  \ calculate group parity bits
-  RF:SYN3 rf@ dup 4 lshift xor dup 2 lshift xor $C0 and ;
-
 : rf-info ( -- )  \ display reception parameters as hex string
   rf.freq @ h.4 rf.group @ h.2 rf.rssi @ h.2 rf.lna @ h.2 rf.afc @ h.4 ;
 
@@ -229,26 +248,28 @@ decimal align
   rf.freq @ + dup rf.freq ! rf-freq!         \ apply correction
   ;
 
-: rf-check ( b -- )  \ check that the register can be accessed over SPI
-  begin  dup RF:SYN1 rf!  RF:SYN1 rf@  over = until
-  drop ;
+: rf-check ( -- )  \ check that the register can be accessed over SPI
+  RF:REG_VERSION rf@ 0= RF:REG_VERSION rf@ $ff = or
+  drop
+  ;
 
 \ --------------------------------------------------
 \   External API
 \ --------------------------------------------------
 
-: rf-init ( freq group node conf -- )  \ init RFM69
+: rf-init ( freq group node conf -- )       \ init RFM69
   spi-init
 
-  $AA rf-check  $55 rf-check  \ will hang if there is no radio!
+  rf-check                                  \ will hang if there is no radio!
 
   ( conf )  rf-config!
+
   ( node )  rf-nodeid!
   ( group ) rf-group!
   ( freq )  rf-freq!
 
-  rf-fixed-pkt!					\ set fixed packet flag/length
-  rf-irq-init 					\ setup interrupts for radio
+  rf-fixed-pkt!                             \ set fixed packet flag/length
+  rf-irq-init                               \ setup interrupts for radio
   rf-idle-mode!
   ;
 
@@ -262,40 +283,76 @@ decimal align
     loop
   $10 +loop ;
 
+\ https://andrehessling.de/2015/02/07/figuring-out-the-power-level-settings-of-hoperfs-rfm69-hwhcw-modules/
+\ RFM69(C)W only has PA0
+\ RFM69H(C)W has PA1 and PA2
+\ feather wing is RFM69HCW - PA1 and PA2 - don't use PA0
+\ jeenode zero if RFM69CW (probably) - only PA0
 \ : rf-power ( power -- )  \ change TX power level (0..31)
-\   RF:PA_LEVEL rf@ $E0 and or RF:PA_LEVEL rf! ;
-: rf-low-power ( n -- n ) ( power ) 18 + $1F and 7 bit or ;
-: rf-mid-power ( n -- n ) ( power ) 14 + $1F and 6 bit or 5 bit or ;
-: rf-high-power ( n -- n ) ( power ) 11 + $1F and 6 bit or 5 bit or ;
-: rf-power ( power -- )                        \ change TX power level in dbm
-  dup -18 max
-  dup 13 <= if dup rf-low-power                 \ -18dBm to +13dBm
-  else  dup 18 >= if dup rf-high-power          \ +18dBm to +20dBm - need PA1+PA2
-  else dup rf-mid-power                         \ +14dBm to +17dBm
-  then then
-  ( pa_level ) RF:PA_LEVEL rf!
-  ( power ) rf.power !
-  drop
+\   \ RF:PA_LEVEL rf@ $E0 and or RF:PA_LEVEL rf!
+\   $80 or RF:PA_LEVEL rf!          \ only use PA0
+\   ;
+\ : rf-low-power ( n -- n ) ( power ) 18 + $1F and 7 bit or ;
+\ : rf-mid-power ( n -- n ) ( power ) 14 + $1F and 6 bit or 5 bit or ;
+\ : rf-high-power ( n -- n ) ( power ) 11 + $1F and 6 bit or 5 bit or ;
+\ : rf-power ( power -- )                        \ change TX power level in dbm
+  \ dup -18 max
+  \ dup 13 <= if dup rf-low-power                 \ -18dBm to +13dBm
+  \ else  dup 18 >= if dup rf-high-power          \ +18dBm to +20dBm - need PA1+PA2
+  \ else dup rf-mid-power                         \ +14dBm to +17dBm
+  \ then then
+  \ ( pa_level ) RF:PA_LEVEL rf!
+  \ ( power ) rf.power !
+  \ drop
+  \ ;
+: rf-power ( power -- )                        \ change TX power level 0..31
+  $80 or RF:PA_LEVEL rf!                       \ only use PA0
   ;
 
-: rf-recv ( -- n )                    \ set rx mode and return if received packet
+\ TODO move (copy) received data to addr rf.buf -> addr
+\ :  rf-recv ( addr -- n )                \ set rx mode and return if received packet
+: rf-recv ( -- n )                      \ set rx mode and return if received packet
   rf.mode @ RF:M_TX = if
     false exit
   then
 
   rf-rx-mode!
-  %01 6 lshift $25 rf!                \ set trigger for PacketReady on DIO0
+  $40 $25 rf!                           \ set trigger for PacketReady on DIO0
 
   rf.recvd @ if rf-recvd-c! true else false then
   ;
 
-: rf-send ( buffer len -- n )         	\ send out one packet for node
-  rf.mode @ RF:M_TX = if 				\ still sending packet drop stack/return
-    drop drop false exit              	\ still sending, early return
+\ variable packet len < 66 per packet - can send 64 bytes
+: rf-send ( buffer len -- n )           \ send out one packet for node
+  rf.mode @ RF:M_TX = if                \ still sending packet drop stack and return
+    drop drop false exit
   then
-  rf-idle-mode!  rf-can-send-c!
+  rf-idle-mode!
+
+  $0 $25 rf!                \ set trigger for PacketReady on DIO0
 
   ( buffer len ) rf-n!spi
   rf-tx-mode!
   true
   ;
+
+\ : rf-listener-mode! ( on/off -- )
+  \ ( flag ) if
+    \ 6 bit RF:OP rf@ or  RF:OP rf!
+  \ else
+    \ ." off "
+    \ RF:OP rf@ dup
+    \ %01 5 lshift or RF:OP rf!
+    \ %00 5 lshift or RF:OP rf!
+  \ then
+  \ ;
+
+\ : rf-auto ( -- )
+  \ \ automode rf-sleep -> tx
+  \ rf-idle-mode!
+  \ %010 5 lshift \ enter condition - fifo not empty
+  \ %110 2 lshift \ exit condition - packet sent
+  \ %11           \ intermediat state - tx
+  \ or or $3B rf!
+  \ ;
+
