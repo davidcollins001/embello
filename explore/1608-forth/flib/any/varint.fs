@@ -6,7 +6,7 @@
 \ signed value -1. At the receiving end it will be decoded as -1, but as long as the
 \ receiver knows that this is a 32-bit value it can be type-cast to uint32 to recover
 \ 0xffffffff.
-\ 
+\
 \ The encoding is as follows:
 \ - the int is rotated 1 bit left placing the sign bit in the lowest bit position
 \ - if bit 0 (now sign bit) is 1 (negative) all other bits are inverted
@@ -14,8 +14,7 @@
 \   starting with the highest non-zero group
 \ - when emitting the last byte for the lowest bits, set the top bit of the byte
 \ - the value zero encodes to 0x80
-\ 
-\ Dependency: needs rf-send to be defined, e.g. from rf69.h
+\
 
 \ Definitions to emit 32-bit ints as varints into the print buffer
 
@@ -47,10 +46,10 @@
 
 : <pkt ( format -- )  \ start collecting values
   pkt.buf pkt.ptr ! +pkt ;
-: pkt>rf ( -- )  \ broadcast the collected values as RF packet
+: pkt> ( -- addr n )  \ output address and lenth of encoded packet
   <v
     pkt.ptr @  begin  4 - dup @ >var  dup pkt.buf u<= until  drop
-  v> 0 rf-send ;
+  v> ;
 
 : *++ ( addr -- c )  dup @ c@  1 rot +! ;
 
@@ -65,7 +64,7 @@
 
 : var> ( -- 0 | n 1 ) \ extract a signed number from the var buffer
   0
-  var.ptr @ var.end @ u< if 
+  var.ptr @ var.end @ u< if
     begin
       7 lshift  var.ptr *++  tuck + swap
     $80 and until

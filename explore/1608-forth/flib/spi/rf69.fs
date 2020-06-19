@@ -1,13 +1,14 @@
 \ rf69 driver
 
-\ ******** OUTDATED ********
-\ ******** NOT FLASHED ********
+\ ******** UPDATED ********
+\ ******** FLASHED ********
 
 \ --------------------------------------------------
 \  Configuration
 \ --------------------------------------------------
 
 \ TODO need to move registers to central location
+\ TODO remove when io.fs flashed
 NVIC-EN0R $304 + constant NVIC-IPR1
 
        $00 constant RF:FIFO
@@ -69,11 +70,13 @@ RF:M_STDBY variable rf.idle-mode  \ default idle mode
          0 variable rf.power      \ power setting
          0 variable rf.afc        \ Auto Frequency Control offset
      false variable rf.recvd      \ flag to show packet was received
+     false variable rf.sending    \ flag to show payload is being sent
          0 variable rf.sent#      \ packet sent counter
          0 variable rf.recvd#     \ payload received counter
          0 variable rf.fixed-pkt# \ length of fixed packet or 0 for variable
-        66 buffer:  rf.buf        \ buffer with last received packet data
+RF:MAXDATA buffer:  rf.buf        \ buffer with last received packet data
     rf.buf constant rf.len        \ packet len, not including itself
+         0 variable rf.packet-handler \ variable for handling packet in rf-listen
 
       8683 variable rf.freq    \ frequency (auto-scaled to 100..999 MHz)
         42 variable rf.group   \ network group (1..250)
@@ -112,9 +115,12 @@ decimal
 \  Internal Helpers
 \ --------------------------------------------------
 
-: rf-recvd-s! ( -- )  true rf.recvd ! ;
-: rf-recvd-c! ( -- ) false rf.recvd ! ;
-: rf-recvd? ( -- n )       rf.recvd @ ;
+: rf-recvd-s! ( -- )     true    rf.recvd ! ;
+: rf-recvd-c! ( -- )     false   rf.recvd ! ;
+: rf-recvd? ( -- n )             rf.recvd @ ;
+: rf-sending-s! ( -- n ) true  rf.sending ! ;
+: rf-sending-c! ( -- n ) false rf.sending ! ;
+: rf-sending? ( -- n )         rf.sending @ ;
 
 \ r/w access to the RF registers
 : rf!@ ( b reg -- b ) +spi >spi >spi> -spi ;
@@ -136,7 +142,7 @@ decimal
   dup rf.mode @ <> if
     dup rf.mode !
     RF:OP rf@  $E3 and  or RF:OP rf!
-    rf-mode-ready
+    \ rf-mode-ready
   else
     drop
   then
@@ -169,32 +175,21 @@ decimal
   ;
 : rf-fifo@ ( -- ) rf.buf rf.fixed-pkt# @ rf-n@spi ;
 
+: rf-status ( -- )                      \ update status values on sync match
+  RF:RSSI rf@  rf.rssi !
+  RF:LNA rf@  3 rshift  7 and  rf.lna !
+  RF:AFC rf@  8 lshift  RF:AFC 1+ rf@  or rf.afc !
+  ;
+
 : rf-irq-exit ( -- ) 1 bit EXTI-PR bis! ;
-: rf-irq-tx
-  RF:IRQ2 rf@ RF:IRQ2_SENT and if
-    rf-idle-mode!
-    1 rf.sent# +!
-    rf-irq-exit
-  then
-  ;
-: rf-irq-rx
-  RF:IRQ2 rf@ RF:IRQ2_RECVD and if
-    rf-status
-    rf-idle-mode!
-    rf-fifo@
-    1 rf.recvd# +!
-    rf-recvd-s!
-    rf-irq-exit
-  then
-  ;
 : rf-irq-handler ( -- )      \ setup interrupt from rf69 -> DI00 -> PB0 (exti0) -> jnz
-  \ ." int " binary rf:irq2 rf@ rf:irq1 rf@ ." (" . space . rf.mode @ . ." )" hex
-  \ RF:IRQ2 rf@
+  \ don't check irq flags - type of interrupt was set on tx/rx
   rf.mode @
   case
-    RF:M_TX of rf-irq-tx endof
-    RF:M_RX of rf-irq-rx endof
+    RF:M_TX of rf-idle-mode! 1 rf.sent# +! rf-sending-c! endof
+    RF:M_RX of 1 rf.recvd# +! rf-recvd-s! endof
   endcase
+  rf-irq-exit
   ;
 : rf-irq-init ( -- )             \ set up interrupt handler for radio
   ['] rf-irq-handler irq-exti0_1 !
@@ -212,15 +207,28 @@ decimal
 
      IMODE-HIGH PB0 io-mode!
   ;
-
-: rf-status ( -- )                      \ update status values on sync match
-  RF:RSSI rf@  rf.rssi !
-  RF:LNA rf@  3 rshift  7 and  rf.lna !
-  RF:AFC rf@  8 lshift  RF:AFC 1+ rf@  or rf.afc !
+: rf-recv-done ( -- )            \ userland handler for irq
+  rf-status
+  rf-idle-mode!
+  rf-fifo@
+  rf-recvd-c!
   ;
 
 : rf-info ( -- )  \ display reception parameters as hex string
   rf.freq @ h.4 rf.group @ h.2 rf.rssi @ h.2 rf.lna @ h.2 rf.afc @ h.4 ;
+
+: rf-show-packet ( -- )
+  ." RF69 " rf-info space ." ( " rf.rssi @ . ." )" space
+  RF:CONF rf@ 7 bit and 0= if            \ check if payload is fixed/variable
+    RF:PAYLOAD_LEN rf@
+  else
+    rf.len c@ 1+
+    dup h.2 space ." : "
+  then
+  \ 11 debug rf.fixed-pkt# @ .
+  0 do rf.buf i + c@ h.2 space loop cr
+  ;
+' rf-show-packet rf.packet-handler !
 
 : rf-correct ( -- ) \ correct the freq based on the AFC measurement of the last packet
   rf.afc @ 16 lshift 16 arshift 61 *         \ AFC correction applied in Hz
@@ -253,7 +261,7 @@ decimal
   rf-irq-init                               \ setup interrupts for radio
   rf-idle-mode!
 
-  rf-pkt#                                   \ get max payload size
+  rf-pkt# rf.fixed-pkt# !                   \ get max payload size
   ;
 
 : rf. ( -- )  \ print out all the RF69 registers
@@ -291,29 +299,37 @@ decimal
   $80 or RF:PA_LEVEL rf!                       \ only use PA0
   ;
 
-\ TODO move (copy) received data to addr rf.buf -> addr
-\ :  rf-recv ( addr -- n )                \ set rx mode and return if received packet
 : rf-recv ( -- n )                      \ set rx mode and return if received packet
-  rf.mode @ RF:M_TX = if
+  rf-sending? if
     false exit
   then
 
   rf-rx-mode!
   $40 $25 rf!                           \ set trigger for PacketReady on DIO0
-  \ $80 $25 rf!                           \ set trigger for SyncAddress on DIO0
 
-  rf-recvd? if rf-recvd-c! true else false then
+  rf-recvd?
+  ;
+
+: rf-listen ( -- )
+  cr
+  begin
+    rf-recv if
+      rf-recv-done
+      rf.packet-handler @ execute
+    then
+  key? until
+  rf-idle-mode!
   ;
 
 \ variable packet len < 66 per packet - can send 64 bytes
 : rf-send ( buffer len -- n )           \ send out one packet for node
-  \ rf-can-send?
-  rf.mode @ RF:M_TX = if                \ still sending packet drop stack and return
+  rf-sending? if                        \ still sending packet drop stack and return
     drop drop false  exit
   then
   rf-idle-mode!
 
-  $0 $25 rf!                \ set trigger for PacketReady on DIO0
+  $0 $25 rf!                            \ set trigger for PacketReady on DIO0
+  rf-sending-s!
 
   ( buffer len ) rf-n!spi
   rf-tx-mode!
@@ -334,9 +350,10 @@ decimal
 \ : rf-auto ( -- )
   \ \ automode rf-sleep -> tx
   \ rf-idle-mode!
-  \ %010 5 lshift \ enter condition - fifo not empty
-  \ %110 2 lshift \ exit condition - packet sent
-  \ %11           \ intermediat state - tx
-  \ or or $3B rf!
+  \ %010 5 lshift    \ enter condition - fifo not empty
+  \ %110 2 lshift or \ exit condition - packet sent
+  \ %11           or \ intermediat state - tx
+  \ $3B rf!
   \ ;
 
+compiletoram? not [if]  cornerstone <<<rf69>>>  [then]
