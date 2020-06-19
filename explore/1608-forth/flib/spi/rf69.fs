@@ -1,7 +1,7 @@
 \ rf69 driver
 
-\ ******** UPDATED ********
-\ ******** FLASHED ********
+\ ******** OUTDATED ********
+\ ******** NOT FLASHED ********
 
 \ --------------------------------------------------
 \  Configuration
@@ -64,16 +64,16 @@ NVIC-EN0R $304 + constant NVIC-IPR1
 \ TODO use idle mode instead of RF:M_STDBY
          0 variable rf.mode       \ last set chip mode
 RF:M_STDBY variable rf.idle-mode  \ default idle mode
-     false variable rf.last       \ flag used to fetch RSSI only once per packet
          0 variable rf.rssi       \ RSSI signal strength of last reception
          0 variable rf.lna        \ Low Noise Amplifier setting (set by AGC)
          0 variable rf.power      \ power setting
          0 variable rf.afc        \ Auto Frequency Control offset
      false variable rf.recvd      \ flag to show packet was received
+         0 variable rf.sent#      \ packet sent counter
          0 variable rf.recvd#     \ payload received counter
          0 variable rf.fixed-pkt# \ length of fixed packet or 0 for variable
         66 buffer:  rf.buf        \ buffer with last received packet data
-    rf.buf constant rf.len
+    rf.buf constant rf.len        \ packet len, not including itself
 
       8683 variable rf.freq    \ frequency (auto-scaled to 100..999 MHz)
         42 variable rf.group   \ network group (1..250)
@@ -83,14 +83,14 @@ create rf:init  \ initialise the radio, each 16-bit word is <reg#,val>
 hex
   0B20 h, \ low M
   119F h, \ pa level
-  1E0C h, \ AFC auto-clear, auto-on
-  2607 h, \ disable clkout
-  29C4 h, \ RSSI thres -98dB
+  \ 1E0C h, \ AFC auto-clear, auto-on
+  \ 29C4 h, \ RSSI thres -98dB
+  29E4 h, \ RSSI thres -98dB
   \ 2B40 h, \ RSSI timeout after 128 bytes
+  2B00 h, \ RSSI timeout after 128 bytes
   2E90 h, \ sync size 3 bytes
   2FAA h, \ sync1: 0xAA -- this is really the last preamble byte
   302D h, \ sync2: 0x2D -- actual sync byte
-  312A h, \ sync3: network group
   3842 h, \ max 62 byte payload
   3C8F h, \ fifo thres
   3D12 h, \ PacketConfig2, interpkt = 1, autorxrestart on
@@ -114,6 +114,7 @@ decimal
 
 : rf-recvd-s! ( -- )  true rf.recvd ! ;
 : rf-recvd-c! ( -- ) false rf.recvd ! ;
+: rf-recvd? ( -- n )       rf.recvd @ ;
 
 \ r/w access to the RF registers
 : rf!@ ( b reg -- b ) +spi >spi >spi> -spi ;
@@ -166,29 +167,28 @@ decimal
 : rf-pkt# ( -- n )                         \ pkt length, fetch from radio if variable
   RF:PAYLOAD_LEN rf@ RF:MAXDATA min
   ;
-: rf-fifo@ ( -- ) rf.buf rf-pkt# rf-n@spi ;
+: rf-fifo@ ( -- ) rf.buf rf.fixed-pkt# @ rf-n@spi ;
 
 : rf-irq-exit ( -- ) 1 bit EXTI-PR bis! ;
 : rf-irq-tx
   RF:IRQ2 rf@ RF:IRQ2_SENT and if
     rf-idle-mode!
-    ." sent "
+    1 rf.sent# +!
     rf-irq-exit
   then
   ;
 : rf-irq-rx
   RF:IRQ2 rf@ RF:IRQ2_RECVD and if
-    RF:RSSI rf@ 1 rshift negate rf.rssi !
+    rf-status
     rf-idle-mode!
     rf-fifo@
     1 rf.recvd# +!
-    ." rcvd " cr
     rf-recvd-s!
     rf-irq-exit
   then
   ;
 : rf-irq-handler ( -- )      \ setup interrupt from rf69 -> DI00 -> PB0 (exti0) -> jnz
-  ." int " binary rf:irq2 rf@ rf:irq1 rf@ ." (" . space . rf.mode @ . ." )" hex
+  \ ." int " binary rf:irq2 rf@ rf:irq1 rf@ ." (" . space . rf.mode @ . ." )" hex
   \ RF:IRQ2 rf@
   rf.mode @
   case
@@ -208,23 +208,16 @@ decimal
         0 bit EXTI-RTSR bis!     \ trigger on PB<0> rising edge
 
         5 bit NVIC-EN0R bis!     \ enable EXTI0_1 interrupt 5
-         \ $F00 NVIC-IPR1 bis!     \ interrupt priority
-         $100 NVIC-IPR1 bis!     \ interrupt priority
+        $0C00 NVIC-IPR1 bis!     \ interrupt priority
 
      IMODE-HIGH PB0 io-mode!
   ;
 
-\ rf-status fetches the IRQ1 reg, checks whether rx_sync is set and was not set
-\ in rf.last. If so, it saves rssi, lna, and afc values; and then updates rf.last.
-\ rf.last ensures that the info is grabbed only once per packet.
-: rf-status ( -- )  \ update status values on sync match
-  RF:IRQ1 rf@  RF:IRQ1_SYNC and  rf.last @ <> if
-    rf.last  RF:IRQ1_SYNC over xor!  @ if
-      RF:RSSI rf@  rf.rssi !
-      RF:LNA rf@  3 rshift  7 and  rf.lna !
-      RF:AFC rf@  8 lshift  RF:AFC 1+ rf@  or rf.afc !
-    then
-  then ;
+: rf-status ( -- )                      \ update status values on sync match
+  RF:RSSI rf@  rf.rssi !
+  RF:LNA rf@  3 rshift  7 and  rf.lna !
+  RF:AFC rf@  8 lshift  RF:AFC 1+ rf@  or rf.afc !
+  ;
 
 : rf-info ( -- )  \ display reception parameters as hex string
   rf.freq @ h.4 rf.group @ h.2 rf.rssi @ h.2 rf.lna @ h.2 rf.afc @ h.4 ;
@@ -233,7 +226,7 @@ decimal
   rf.afc @ 16 lshift 16 arshift 61 *         \ AFC correction applied in Hz
   2 arshift                                  \ apply 1/4 of measured offset as correction
   5000 over 0< if negate max else min then   \ don't apply more than 5khz
-  rf.freq @ + dup rf.freq ! rf-freq!         \ apply correction
+  rf.freq @ + rf-freq!                       \ apply correction
   ;
 
 : rf-check ( -- )  \ check that the register can be accessed over SPI
@@ -245,12 +238,13 @@ decimal
 \   External API
 \ --------------------------------------------------
 
-: rf-init ( freq group node conf -- )       \ init RFM69
+: rf-init ( freq group node modem conf -- )       \ init RFM69
   spi-init
 
   rf-check                                  \ will hang if there is no radio!
 
   ( conf )  rf-config!
+  ( modem ) rf-config!
 
   ( node )  rf-nodeid!
   ( group ) rf-group!
@@ -258,6 +252,8 @@ decimal
 
   rf-irq-init                               \ setup interrupts for radio
   rf-idle-mode!
+
+  rf-pkt#                                   \ get max payload size
   ;
 
 : rf. ( -- )  \ print out all the RF69 registers
@@ -277,7 +273,6 @@ decimal
 \ jeenode zero if RFM69CW (probably) - only PA0
 \ : rf-power ( power -- )  \ change TX power level (0..31)
 \   \ RF:PA_LEVEL rf@ $E0 and or RF:PA_LEVEL rf!
-\   $80 or RF:PA_LEVEL rf!          \ only use PA0
 \   ;
 \ : rf-low-power ( n -- n ) ( power ) 18 + $1F and 7 bit or ;
 \ : rf-mid-power ( n -- n ) ( power ) 14 + $1F and 6 bit or 5 bit or ;
@@ -305,14 +300,16 @@ decimal
 
   rf-rx-mode!
   $40 $25 rf!                           \ set trigger for PacketReady on DIO0
+  \ $80 $25 rf!                           \ set trigger for SyncAddress on DIO0
 
-  rf.recvd @ if rf-recvd-c! true else false then
+  rf-recvd? if rf-recvd-c! true else false then
   ;
 
 \ variable packet len < 66 per packet - can send 64 bytes
 : rf-send ( buffer len -- n )           \ send out one packet for node
+  \ rf-can-send?
   rf.mode @ RF:M_TX = if                \ still sending packet drop stack and return
-    drop drop false exit
+    drop drop false  exit
   then
   rf-idle-mode!
 
