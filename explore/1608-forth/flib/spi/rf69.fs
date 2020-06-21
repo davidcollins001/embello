@@ -1,7 +1,9 @@
 \ rf69 driver
 
 \ ******** UPDATED ********
-\ ******** FLASHED ********
+\ ******** NOT FLASHED ********
+
+\ TODO only read sent bytes from radio not entire buffer
 
 \ --------------------------------------------------
 \  Configuration
@@ -59,8 +61,8 @@ NVIC-EN0R $304 + constant NVIC-IPR1
      2 bit constant RF:IRQ2_RECVD
      1 bit constant RF:IRQ2_CRCOK
 
-         2 constant RF:HDR_LEN
         66 constant RF:MAXDATA
+		31 constant RF:MAXPOWER
 
 \ TODO use idle mode instead of RF:M_STDBY
          0 variable rf.mode       \ last set chip mode
@@ -295,8 +297,14 @@ decimal
   \ ( power ) rf.power !
   \ drop
   \ ;
-: rf-power ( power -- )                        \ change TX power level 0..31
-  $80 or RF:PA_LEVEL rf!                       \ only use PA0
+: rf-power ( power -- )                            \ change TX power level 0..31
+  RF:MAXPOWER min 0 max                            \ bounds check
+  dup rf.power @ <> if
+    ( power ) dup rf.power !
+    $80 or  RF:PA_LEVEL rf!                        \ only use PA0
+  else
+    drop
+  then
   ;
 
 : rf-recv ( -- n )                      \ set rx mode and return if received packet
@@ -356,4 +364,4 @@ decimal
   \ $3B rf!
   \ ;
 
-compiletoram? not [if]  cornerstone <<<rf69>>>  [then]
+compiletoram? not [if]  cornerstone <<<rf69>>> compiletoram [then]
