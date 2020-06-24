@@ -12,8 +12,9 @@
 \ --------------------------------------------------
 
   3 constant DG:RETRIES
- 40 constant DG.TIMEOUT  \ ms
-  3 constant DG.HDR#     \ doesn't include length byte
+\ 40 constant DG:TIMEOUT  \ ms
+100 constant DG:TIMEOUT  \ ms
+  3 constant DG:HDR#     \ doesn't include length byte
 
 \ TODO use packet object eg, functions and mem that points to:
  rf.len     constant dg.len
@@ -22,8 +23,8 @@
  rf.buf 3 + constant dg.flags
  rf.buf 4 + constant dg.data
 
-  0 variable dg.seq#
-RF:MAXDATA DG.HDR# 1+ - buffer:  dg.buf
+  7 variable dg.seq#
+RF:MAXDATA buffer: dg.buf
 
 \ --------------------------------------------------
 \  Internal Helpers
@@ -32,7 +33,7 @@ RF:MAXDATA DG.HDR# 1+ - buffer:  dg.buf
 : yield ( -- ) ;
 
 \ TODO exponential backoff timeout?
-: dg-timeout? ( time -- ) millis swap - DG.TIMEOUT > ;
+: dg-timeout? ( time -- ) millis swap - DG:TIMEOUT > ;
 
 \ TODO dg.seq# on stack?
 : dg-ack? ( from -- ? )
@@ -46,59 +47,48 @@ RF:MAXDATA DG.HDR# 1+ - buffer:  dg.buf
 
 : dg-recv-ack ( from -- ? )
   millis
-  begin
-    rf-recv if
-      rf-recv-done
-." got message " cr
-      over dg-ack? if 2drop true exit then
-    else
-      yield
-    then
-2 . .v
-  dup dg-timeout? until
-  2drop
-  false
-3 . .v
-  ;
-
-: dg-recv-ack ( from -- ? )
-  millis
   1 0 do
     rf-recv if
       rf-recv-done
-      over dg-ack? if true leave then
+      over dg-ack? if ." ack'd " true leave then
     then
     yield
     dup dg-timeout? if false leave then
   0 +loop                                     \ loop forever or until timeout/ack
   nip nip
+  rf-idle-mode!                               \ put radio to sleep
   ;
 
 : dg-wait-sent ( -- )                         \ wait until the radio can send
   begin rf-sending? while yield repeat
   ;
 
-: dg-seq! ( -- ) 1 dg.seq# +!  dg.seq# @ dg.data c! ;
+\ : dg-seq! ( -- ) 1 dg.seq# +!  dg.seq# @ dg.data c! ;
+: dg-seq! ( -- ) dg.seq# @ dg.data c! ;
 : dg-set-header ( len addr -- )
-  ( addr )              dg.addr c!            \ set header
-  rf.nodeid @           dg.from c!
-  ( len ) DG.HDR# + dup dg.len c!
+  ( addr )          dg.addr c!                \ set header
+  rf.nodeid @       dg.from c!
+  ( len ) DG:HDR# + dg.len c!
   0 dg.flags c!                               \ set flags
-  \ dg-seq!                                     \ update/add seq to payload
+  \ dg-seq!                                   \ update/add seq to payload
   ;
 : dg-send-to ( buffer len addr -- n )         \ send out one packet for node
-  -rot 2 pick                                 \ save addr
+  2dup
   ( len addr ) dg-set-header
-  ( len ) tuck dg.data swap move              \ copy user data to radio buffer
+  -rot ( 62 min ) tuck
+  \ TODO bound check
+  ( buffer len ) dg.data swap move            \ copy user data to radio buffer
+  DG:HDR# +                                   \ add header len to packet len
 
   DG:RETRIES 0 do
     begin dup rf.buf  swap ( len ) rf-send while yield repeat
     dg-wait-sent
 
-    over dg-recv-ack if rot true leave then
+    over dg-recv-ack if rot ( true ) leave then
   loop
+  \ nip nip
   2drop
-  \ TODO return false on failure
+  \ TODO return success or failure
   ;
 
 : dg-send-ack ( seq addr -- )
