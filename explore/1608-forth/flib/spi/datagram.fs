@@ -12,8 +12,7 @@
 \ --------------------------------------------------
 
   3 constant DG:RETRIES
-\ 40 constant DG:TIMEOUT  \ ms
-100 constant DG:TIMEOUT  \ ms
+ 40 constant DG:TIMEOUT  \ ms
   3 constant DG:HDR#     \ doesn't include length byte
 
 \ TODO use packet object eg, functions and mem that points to:
@@ -30,16 +29,12 @@ RF:MAXDATA buffer: dg.buf
 \  Internal Helpers
 \ --------------------------------------------------
 
-\ TODO rf-recv-done should copy data to buf
-: dg-recv-done ( a-addr -- )
-  rf-recv-done
-  rf.buf ( addr ) swap rf.fixed-pkt# @ move   \ copy data for user
-  ;
-
 : yield ( -- ) ;
 
 : dg-seq@ ( -- n ) dg.seq# @ ;
 : dg-seq! ( n -- ) dg.seq# ! ;
+\ : dg-seq! ( -- ) 1 dg.seq# +!  dg.seq# @ dg.data c! ;
+\ : dg-seq! ( -- ) dg.seq# @ dg.data c! ;
 
 \ TODO exponential backoff timeout?
 : dg-timeout? ( time -- ) millis swap - DG:TIMEOUT > ;
@@ -58,47 +53,21 @@ RF:MAXDATA buffer: dg.buf
   millis
   1 0 do
     rf-recv if
-      rf-recv-done
+      dg.buf rf-recv-done2
       over dg-ack? if ." ack'd " true leave then
     then
     yield
     dup dg-timeout? if false leave then
-  0 +loop                                     \ loop forever or until timeout/ack
+  0 +loop                                     \ loop until timeout/ack
   nip nip
   rf-idle-mode!                               \ put radio to sleep
   ;
 
-: dg-wait-sent ( -- )                         \ wait until the radio can send
-  begin rf-sending? while yield repeat
-  ;
-
-\ : dg-seq! ( -- ) 1 dg.seq# +!  dg.seq# @ dg.data c! ;
-: dg-seq! ( -- ) dg.seq# @ dg.data c! ;
 : dg-set-header ( len addr -- )
   ( addr )          dg.addr c!                \ set header
   rf.nodeid @       dg.from c!
   ( len ) DG:HDR# + dg.len c!
   0 dg.flags c!                               \ set flags
-  \ dg-seq!                                   \ update/add seq to payload
-  ;
-: dg-send-to ( buffer len addr -- n )         \ send out one packet for node
-  2dup
-  ( len addr ) dg-set-header
-  -rot ( 62 min ) tuck
-  \ TODO bound check
-  ( buffer len ) dg.data swap move            \ copy user data to radio buffer
-  DG:HDR# +                                   \ add header len to packet len
-
-  DG:RETRIES 0 do
-    begin dup rf.buf  swap ( len ) rf-send while yield repeat
-    dg-wait-sent
-
-    over dg-recv-ack if rot ( true ) leave then
-  loop
-  \ nip nip
-  2drop
-  \ TODO return success or failure
-  rf-idle-mode!
   ;
 
 : dg-send-ack ( seq addr -- )
@@ -110,9 +79,36 @@ RF:MAXDATA buffer: dg.buf
   drop
   ;
 
+: dg-wait-sent ( -- )                         \ wait until the radio can send
+  begin rf-sending? while yield repeat
+  ;
+
+\ --------------------------------------------------
+\   External API
+\ --------------------------------------------------
+
+: dg-send-to ( buffer len addr -- n )         \ send out one packet for node
+  2dup
+  ( len addr ) dg-set-header
+  -rot ( 62 min ) tuck
+  \ TODO bound check
+  ( buffer len ) dg.data swap move            \ copy user data to radio buffer
+  DG:HDR# 1+ +                                \ add header len to packet len
+
+  DG:RETRIES 0 do
+    begin dup rf.buf  swap ( len ) rf-send while yield repeat
+    dg-wait-sent
+
+    over dg-recv-ack if rot ( true ) leave then
+  loop
+  2drop
+  \ TODO return success or failure
+  rf-idle-mode!
+  ;
+
 : dg-recv ( -- addr n )
     rf-recv if
-      dg.buf dg-recv-done
+      dg.buf rf-recv-done2
       dg-seq@ dg.from c@ dg-send-ack
       dg-wait-sent
       true
@@ -144,10 +140,6 @@ RF:MAXDATA buffer: dg.buf
   key? until
   rf-idle-mode!
   ;
-
-\ --------------------------------------------------
-\   External API
-\ --------------------------------------------------
 
 \ ( rf12demo end, size: ) here dup hex. swap - .
 compiletoram? not [if]  cornerstone <<<datagram>>> compiletoram [then]
