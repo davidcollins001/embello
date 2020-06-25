@@ -193,7 +193,7 @@ decimal
   endcase
   rf-irq-exit
   ;
-: rf-irq-init ( -- )             \ set up interrupt handler for radio
+: rf-irq-init ( -- )                    \ set up interrupt handler for radio
   ['] rf-irq-handler irq-exti0_1 !
 
      0 bit RCC-APB2ENR  bis!     \ enable setting SYSCFGEN
@@ -209,10 +209,11 @@ decimal
 
      IMODE-HIGH PB0 io-mode!
   ;
-: rf-recv-done ( -- )            \ userland handler for irq
+: rf-recv-done ( addr -- )              \ userland handler for irq
   rf-status
   rf-idle-mode!
   rf-fifo@
+  rf.buf ( addr ) rf.fixed-pkt# move    \ copy data for user
   rf-recvd-c!
   ;
 
@@ -318,11 +319,11 @@ decimal
   rf-recvd?
   ;
 
-: rf-listen ( -- )
+: rf-listen ( addr -- )
   cr
   begin
     rf-recv if
-      rf-recv-done
+      ( addr ) rf-recv-done
       rf.packet-handler @ execute
     then
   key? until
@@ -332,7 +333,7 @@ decimal
 \ variable packet len < 66 per packet - can send 64 bytes
 : rf-send ( buffer len -- n )           \ send out one packet for node
   rf-sending? if                        \ still sending packet drop stack and return
-    drop drop false  exit
+    2drop false  exit
   then
   rf-idle-mode!
 

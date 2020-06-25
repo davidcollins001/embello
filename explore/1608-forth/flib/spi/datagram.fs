@@ -30,7 +30,16 @@ RF:MAXDATA buffer: dg.buf
 \  Internal Helpers
 \ --------------------------------------------------
 
+\ TODO rf-recv-done should copy data to buf
+: dg-recv-done ( a-addr -- )
+  rf-recv-done
+  rf.buf ( addr ) swap rf.fixed-pkt# @ move   \ copy data for user
+  ;
+
 : yield ( -- ) ;
+
+: dg-seq@ ( -- n ) dg.seq# @ ;
+: dg-seq! ( n -- ) dg.seq# ! ;
 
 \ TODO exponential backoff timeout?
 : dg-timeout? ( time -- ) millis swap - DG:TIMEOUT > ;
@@ -89,31 +98,56 @@ RF:MAXDATA buffer: dg.buf
   \ nip nip
   2drop
   \ TODO return success or failure
+  rf-idle-mode!
   ;
 
 : dg-send-ack ( seq addr -- )
-  dg.data c@ dg.seq# !
-  ( len addr ) 1 swap dg-set-header
+  1 swap ( addr ) .v dg-set-header
+  dg.seq# @ dg.data c!                        \ copy user data to radio buffer
+  0 dg.data 1+ c!                             \ empty rest of ack data
+  drop \ dg.data c!
+  rf.buf DG:HDR# 1+ rf-send
+  drop
   ;
 
 : dg-recv ( -- addr n )
-  begin
     rf-recv if
-      rf-recv-done
+      dg.buf dg-recv-done
+      dg-seq@ dg.from c@ dg-send-ack
+      dg-wait-sent
+      true
+    else
+      false
+    then
+    ;
 
-      DG:RETRIES 0 do
-        \ begin dup rf.buf  swap ( len ) rf-send while yield repeat
-        dg-send-ack
-        dg-wait-sent
+: dg-show-packet ( -- )
+  ." RF69 " rf-info space ." ( " rf.rssi @ . ." )" space
+  RF:CONF rf@ 7 bit and 0= if            \ check if payload is fixed/variable
+    RF:PAYLOAD_LEN rf@
+  else
+    dg.buf c@ 1+
+    dup h.2 space ." : "
+  then
+  \ 11 debug rf.fixed-pkt# @ .
+  0 do dg.buf i + c@ h.2 space loop cr
+  ;
 
-        over dg-recv-ack if rot true leave then
-      loop
-      2drop
-
+: dg-listen ( -- )
+  cr
+  begin
+    dg-recv if
+      dg-show-packet
+    else
+      yield
     then
   key? until
   rf-idle-mode!
   ;
+
+\ --------------------------------------------------
+\   External API
+\ --------------------------------------------------
 
 \ ( rf12demo end, size: ) here dup hex. swap - .
 compiletoram? not [if]  cornerstone <<<datagram>>> compiletoram [then]
