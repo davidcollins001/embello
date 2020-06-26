@@ -20,7 +20,7 @@
  rf.buf 3 + constant dg.pkt-seq
  rf.buf 4 + constant dg.data
 
-  7 variable dg.seq#
+  0 variable dg.seq#
 RF:MAXDATA buffer: dg.buf
 
 \ --------------------------------------------------
@@ -31,9 +31,9 @@ RF:MAXDATA buffer: dg.buf
 
 : dg-seq@ ( -- n ) dg.seq# @ ;
 : dg-seq! ( n -- ) dg.seq# ! ;
-: dg-seq++ ( -- n ) dg.seq# @ 1+ dup dg.seq# ! ;        \ increment seq
-\ : dg-seq! ( -- ) 1 dg.seq# +!  dg.seq# @ dg.data c! ;
-\ : dg-seq! ( -- ) dg.seq# @ dg.data c! ;
+: dg-seq++ ( -- n ) dg.seq# @ 1+ $ff mod dup dg.seq! ;        \ increment seq
+\ : dg-seq! ( -- ) 1 dg.seq# +!  dg.seq@ dg.data c! ;
+\ : dg-seq! ( -- ) dg.seq@ dg.data c! ;
 
 \ TODO exponential backoff timeout?
 : dg-timeout? ( time -- ) millis swap - DG:TIMEOUT > ;
@@ -47,7 +47,7 @@ RF:MAXDATA buffer: dg.buf
   1 0 do
     rf-recv if
       0 rf-recv-done2
-      over dg-ack? if ." ack'd " true leave then
+      over dg-ack? if ( ." ack'd " ) true leave then
     then
     yield
     dup dg-timeout? if false leave then
@@ -79,12 +79,14 @@ RF:MAXDATA buffer: dg.buf
   dg-wait-sent
   ;
 
-: dg-send-retry ( addr buffer len -- )        \ retry sending
+: dg-send-retry ( addr buffer len -- ? )      \ retry sending
+  rot false                                   \ set return value
+
   DG:RETRIES 0 do
-    2dup dg-send dg-wait-sent
-    2 pick dg-recv-ack if ( true ) leave then
+    2over dg-send dg-wait-sent
+    over dg-recv-ack if drop true leave then
   loop
-  2drop drop
+  2nip nip
   ;
 
 \ --------------------------------------------------

@@ -64,7 +64,6 @@ NVIC-EN0R $304 + constant NVIC-IPR1
         66 constant RF:MAXDATA
 		31 constant RF:MAXPOWER
 
-\ TODO use idle mode instead of RF:M_STDBY
          0 variable rf.mode       \ last set chip mode
 RF:M_STDBY variable rf.idle-mode  \ default idle mode
          0 variable rf.rssi       \ RSSI signal strength of last reception
