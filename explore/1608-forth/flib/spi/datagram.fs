@@ -1,12 +1,6 @@
 \ compiletoflash
 \ ( datagram start: ) here dup hex.
 
-\ TODO send dg.seq# with message
-
-\ TODO: seq
-\       send seq in header
-\       have ack contain seq in data
-
 \ datagram packet format:
 \   [len, to, from, flags/seq, data, ...]
 
@@ -22,7 +16,8 @@
  rf.len     constant dg.len
  rf.buf 1+  constant dg.addr
  rf.buf 2+  constant dg.from
- rf.buf 3 + constant dg.flags
+ \ rf.buf 3 + constant dg.flags
+ rf.buf 3 + constant dg.pkt-seq
  rf.buf 4 + constant dg.data
 
   7 variable dg.seq#
@@ -36,6 +31,7 @@ RF:MAXDATA buffer: dg.buf
 
 : dg-seq@ ( -- n ) dg.seq# @ ;
 : dg-seq! ( n -- ) dg.seq# ! ;
+: dg-seq++ ( -- n ) dg.seq# @ 1+ dup dg.seq# ! ;        \ increment seq
 \ : dg-seq! ( -- ) 1 dg.seq# +!  dg.seq# @ dg.data c! ;
 \ : dg-seq! ( -- ) dg.seq# @ dg.data c! ;
 
@@ -43,12 +39,7 @@ RF:MAXDATA buffer: dg.buf
 : dg-timeout? ( time -- ) millis swap - DG:TIMEOUT > ;
 
 : dg-ack? ( from -- ? )
-  \ TODO cope with new message/lost ack
-  \ re-ack - new message, ack might have gotten lost
-  \ seen? if dg-send-ack then
-  \ discard unknown message
-  \ dg-send-ack
-  ( from ) dg.from c@ =  dg-seq@ dg.data c@ = and
+  ( from ) dg.from c@ =  dg-seq@ dg.pkt-seq c@ = and
   ;
 
 : dg-recv-ack ( from -- ? )
@@ -56,7 +47,7 @@ RF:MAXDATA buffer: dg.buf
   1 0 do
     rf-recv if
       0 rf-recv-done2
-      over dg-ack? if ( ." ack'd " ) true leave then
+      over dg-ack? if ." ack'd " true leave then
     then
     yield
     dup dg-timeout? if false leave then
@@ -69,7 +60,9 @@ RF:MAXDATA buffer: dg.buf
   ( addr )          dg.addr c!                \ set header
   rf.nodeid @       dg.from c!
   ( len ) DG:HDR# + dg.len c!
-  0 dg.flags c!                               \ set flags
+  \ 0 dg.flags c!                               \ set flags
+  \ seq isn't changed after receiving so no need to set
+  \ dg.pkt-seq c@     dg.pkt-seq c!             \ set sequence number
   ;
 
 : dg-wait-sent ( -- )                         \ wait until the radio can send
@@ -81,10 +74,9 @@ RF:MAXDATA buffer: dg.buf
   ;
 
 : dg-send-ack ( addr -- )
-  1 swap ( addr ) dg-set-header
-  dg-seq@ dg.data c!                          \ copy user data to radio buffer
-  0 dg.data 1+ c!                             \ empty rest of ack data
+  0 swap ( addr ) dg-set-header
   rf.buf DG:HDR# 1+ dg-send
+  dg-wait-sent
   ;
 
 : dg-send-retry ( addr buffer len -- )        \ retry sending
@@ -103,6 +95,7 @@ RF:MAXDATA buffer: dg.buf
   ( swap DG:MAXDATA min swap )                 \ bounds check payload
   2dup
   ( len addr ) dg-set-header
+  dg-seq++ dg.pkt-seq c!                      \ increment and set seq
   -rot  tuck                                  \ push addr to back and copy len
   ( buffer len ) dg.data swap move            \ copy user data to radio buffer
   DG:HDR# 1+ + rf.buf swap dg-send-retry      \ add header len to packet len
@@ -114,7 +107,6 @@ RF:MAXDATA buffer: dg.buf
   rf-recv if
     dg.buf rf-recv-done2
     dg.from c@ dg-send-ack
-    dg-wait-sent
     true
   else
     false
