@@ -213,7 +213,11 @@ decimal
   rf-status
   rf-idle-mode!
   rf-fifo@
-  rf.buf ( addr ) rf.fixed-pkt# move    \ copy data for user
+  ( addr ) dup if
+    rf.buf ( addr ) rf.fixed-pkt# move  \ copy data for user if addr provided
+  else
+    drop
+  then
   rf-recvd-c!
   ;
 

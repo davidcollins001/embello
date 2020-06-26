@@ -1,8 +1,11 @@
 \ compiletoflash
 \ ( datagram start: ) here dup hex.
 
-\ TODO find where to put dg.seq# in packet
-\ TODO pass dg.seq# on the stack
+\ TODO send dg.seq# with message
+
+\ TODO: seq
+\       send seq in header
+\       have ack contain seq in data
 
 \ datagram packet format:
 \   [len, to, from, flags/seq, data, ...]
@@ -39,22 +42,21 @@ RF:MAXDATA buffer: dg.buf
 \ TODO exponential backoff timeout?
 : dg-timeout? ( time -- ) millis swap - DG:TIMEOUT > ;
 
-\ TODO dg.seq# on stack?
 : dg-ack? ( from -- ? )
   \ TODO cope with new message/lost ack
   \ re-ack - new message, ack might have gotten lost
   \ seen? if dg-send-ack then
   \ discard unknown message
   \ dg-send-ack
-  ( from ) dg.from c@ =  dg.seq# @ dg.data c@ = and
+  ( from ) dg.from c@ =  dg-seq@ dg.data c@ = and
   ;
 
 : dg-recv-ack ( from -- ? )
   millis
   1 0 do
     rf-recv if
-      dg.buf rf-recv-done2
-      over dg-ack? if ." ack'd " true leave then
+      0 rf-recv-done2
+      over dg-ack? if ( ." ack'd " ) true leave then
     then
     yield
     dup dg-timeout? if false leave then
@@ -88,10 +90,10 @@ RF:MAXDATA buffer: dg.buf
 : dg-send-retry ( addr buffer len -- )        \ retry sending
   DG:RETRIES 0 do
     2dup dg-send dg-wait-sent
-    2 pick dg-recv-ack if rot ( true ) leave then
+    2 pick dg-recv-ack if ( true ) leave then
   loop
   2drop drop
-;
+  ;
 
 \ --------------------------------------------------
 \   External API
@@ -135,12 +137,11 @@ RF:MAXDATA buffer: dg.buf
   begin
     dg-recv if
       dg-show-packet
-    else
-      yield
     then
+    yield
   key? until
   rf-idle-mode!
   ;
 
-\ ( rf12demo end, size: ) here dup hex. swap - .
+\ ( datagram end, size: ) here dup hex. swap - .
 compiletoram? not [if]  cornerstone <<<datagram>>> compiletoram [then]
