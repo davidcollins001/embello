@@ -36,7 +36,7 @@
 
 \ some definitions to build up and send a packet with varints.
 \ for example, to send a packet of type 123, with values 11, 2222, and -3333:
-\   123 <pkt 11 n+> 2222 n+> -3333 n+> pkt>rf
+\   123 <pkt 11 +pkt 2222 +pkt -3333 +pkt pkt>rf
 
 20 cells buffer: pkt.buf  \ room to collect up to 20 values for sending
       0 variable pkt.ptr  \ current position in this packet buffer
@@ -75,3 +75,6 @@
 
 : var. ( addr cnt -- )  \ decode and display all the varints
   var-init begin var> while . repeat ;
+
+\ ( varint end, size: ) here dup hex. swap - .
+compiletoram? not [if]  cornerstone <<<varint>>> compiletoram [then]

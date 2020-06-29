@@ -31,7 +31,7 @@ RF:MAXDATA buffer: dg.buf
 
 : dg-seq@ ( -- n ) dg.seq# @ ;
 : dg-seq! ( n -- ) dg.seq# ! ;
-: dg-seq++ ( -- n ) dg.seq# @ 1+ $ff mod dup dg.seq! ;        \ increment seq
+: dg-seq++ ( -- n ) dg.seq# @ 1+ $ff mod dup dg-seq! ;        \ increment seq
 \ : dg-seq! ( -- ) 1 dg.seq# +!  dg.seq@ dg.data c! ;
 \ : dg-seq! ( -- ) dg.seq@ dg.data c! ;
 
@@ -46,7 +46,7 @@ RF:MAXDATA buffer: dg.buf
   millis
   1 0 do
     rf-recv if
-      0 rf-recv-done2
+      0 rf-recv-done
       over dg-ack? if ( ." ack'd " ) true leave then
     then
     yield
@@ -105,9 +105,10 @@ RF:MAXDATA buffer: dg.buf
   rf-idle-mode!
   ;
 
+\ TODO should take address
 : dg-recv ( -- addr n )
   rf-recv if
-    dg.buf rf-recv-done2
+    dg.buf rf-recv-done
     dg.from c@ dg-send-ack
     true
   else

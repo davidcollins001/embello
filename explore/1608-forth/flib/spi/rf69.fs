@@ -1,7 +1,7 @@
 \ rf69 driver
 
 \ ******** UPDATED ********
-\ ******** NOT FLASHED ********
+\ ******** FLASHED ********
 
 \ TODO only read sent bytes from radio not entire buffer
 
@@ -213,7 +213,7 @@ decimal
   rf-idle-mode!
   rf-fifo@
   ( addr ) dup if
-    rf.buf ( addr ) rf.fixed-pkt# move  \ copy data for user if addr provided
+    rf.buf ( addr ) swap rf.fixed-pkt# @ move  \ copy data for user if addr provided
   else
     drop
   then
