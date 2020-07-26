@@ -160,6 +160,11 @@ decimal
   ;
 
 : rf-freq! ( u -- )  \ set the frequency, supports any input precision
+  \ Frequency steps are in units of (32,000,000 >> 19) = 61.03515625 Hz
+  \ use multiples of 64 to avoid multi-precision arithmetic, i.e. 3906.25 Hz
+  \ due to this, the lower 6 bits of the calculated factor will always be 0
+  \ this is still 4 ppm, i.e. well below the radio's 32 MHz crystal accuracy
+  \ 868.0 MHz = 0xD90000, 868.3 MHz = 0xD91300, 915.0 MHz = 0xE4C000
   dup rf.freq !
   begin dup 100000000 < while 10 * repeat
   ( f ) 2 lshift  32000000 11 rshift u/mod nip  \ avoid / use u/ instead
