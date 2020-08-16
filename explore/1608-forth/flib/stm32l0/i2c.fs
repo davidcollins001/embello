@@ -12,7 +12,7 @@ $40005400 constant I2C1
 \    I2C1 $14 + constant I2C1-TIMEOUTR
      I2C1 $18 + constant I2C1-ISR
      I2C1 $1C + constant I2C1-ICR
-\    I2C1 $20 + constant I2C1-PXCR
+     I2C1 $20 + constant I2C1-PECR
      I2C1 $24 + constant I2C1-RXDR
      I2C1 $28 + constant I2C1-TXDR
 
@@ -26,7 +26,7 @@ $40005400 constant I2C1
   cr ."  TIMEOUTR " dup @ hex. 4 +
           ."  ISR " dup @ hex. 4 +
          ."   ICR " dup @ h.4 space 4 +
-         ."  PXCR " dup @ h.2 space 4 +
+         ."  PECR " dup @ h.2 space 4 +
        ."    RXDR " dup @ h.2 space 4 +
          ."  TXDR " dup @ h.2 space drop ;
 
@@ -67,7 +67,7 @@ $40005400 constant I2C1
 
 : i2c-setn ( u -- )  \ prepare for N-byte transfer and reset buffer pointer
   16 lshift I2C1-CR2 @ $FF00FFFF and or I2C1-CR2 !  i2c-reset ;
-  
+  53
 : i2c-wr ( -- )  \ send bytes to the I2C interface
   begin
     begin %1011001 I2C1-ISR bit@ until  \ wait for TCR, STOPF, NACKF, or TXE
@@ -90,17 +90,18 @@ $40005400 constant I2C1
 \   tx=0 rx=0 : START - STOP          (used for presence detection)
 
 : i2c-xfer ( u -- nak )
-  0 bit I2C1-CR1 bic!  0 bit I2C1-CR1 bis!  \ toggle PE low to reset
+  0 bit I2C1-CR1 bic!               \ toggle PE high to enable
   i2c.ptr @ i2c.buf - ?dup if
-    i2c-setn  0 i2c-start  i2c-wr  \ tx>0
+    i2c-setn  0 i2c-start  i2c-wr   \ tx>0
   else
-    dup 0= if 0 i2c-start then  \ tx=0 rx=0
+    dup 0= if 0 i2c-start then      \ tx=0 rx=0
   then
   ?dup if
-    i2c-setn  1 i2c-start  i2c-rd  \ rx>0
+    i2c-setn  1 i2c-start  i2c-rd   \ rx>0
   then
   i2c-stop i2c-reset
-  4 bit I2C1-ISR bit@ 0<>  \ NAKF
+  4 bit I2C1-ISR bit@ 0<>           \ NAKF
+  0 bit I2C1-CR1 bis!               \ toggle PE high to disable
 ;
 
 : i2c. ( -- )  \ scan and report all I2C devices on the bus

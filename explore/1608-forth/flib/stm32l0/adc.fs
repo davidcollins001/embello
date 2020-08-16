@@ -13,6 +13,8 @@ $40012400 constant ADC1
     ADC1 $0B4 + constant ADC-CALFACT
     ADC1 $308 + constant ADC-CCR
 
+0 variable adc.init         \ flag - has adc been init'd can only happen once
+
 : adc? ( -- )
   ADC1
   cr ."     ISR " dup @ hex. 4 +
@@ -38,10 +40,13 @@ $40012400 constant ADC1
   ADC-DR @ ;
 
 : adc-init ( -- )  \ initialise ADC
-  \ FIXME can't call this twice, recalibration will hang!
-  9 bit RCC-APB2ENR bis!  \ set ADCEN
-  adc-calib  1 ADC-CR !   \ perform calibration, then set ADEN to enable ADC
-  adc-once drop ;
+  adc.init @ not if
+    \ FIXME can't call this twice, recalibration will hang!
+    9 bit RCC-APB2ENR bis!  \ set ADCEN
+    adc-calib  1 ADC-CR !   \ perform calibration, then set ADEN to enable ADC
+    adc-once drop
+    true adc.init !
+  then ;
 
 : adc-deinit ( -- )  \ de-initialise ADC
   1 bit ADC-CR bis! 9 bit RCC-APB2ENR bic! ;
