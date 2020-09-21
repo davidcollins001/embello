@@ -67,7 +67,7 @@ $40005400 constant I2C1
 
 : i2c-setn ( u -- )  \ prepare for N-byte transfer and reset buffer pointer
   16 lshift I2C1-CR2 @ $FF00FFFF and or I2C1-CR2 !  i2c-reset ;
-  53
+
 : i2c-wr ( -- )  \ send bytes to the I2C interface
   begin
     begin %1011001 I2C1-ISR bit@ until  \ wait for TCR, STOPF, NACKF, or TXE
