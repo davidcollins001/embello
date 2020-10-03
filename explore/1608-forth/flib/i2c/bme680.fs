@@ -82,17 +82,6 @@ $01 constant BME:ENABLE_GAS_MEAS
 \ ambient humidity shift value for compensation
 4 constant BME:HUM_REG_SHIFT_VAL
 
-\ \ settings selector
-\ 1 constant BME:OST_SEL
-\ 2 constant BME:OSP_SEL
-\ 4 constant BME:OSH_SEL
-\ 8 constant BME:GAS_MEAS_SEL
-\ 16 constant BME:FILTER_SEL
-\ 32 constant BME:HCNTRL_SEL
-\ 64 constant BME:RUN_GAS_SEL
-\ 128 constant BME:NBCONV_SEL
-\ \ BME:GAS_MEAS_SEL BME:RUN_GAS_SEL or BME:NBCONV_SEL or variable BME:GAS_SENSOR_SEL !
-
 \ \ mask definitions
 \ $30 constant BME:GAS_MEAS_MSK
 \ $0f constant BME:NBCONV_MSK
@@ -124,21 +113,6 @@ $0f constant BME:GAS_RANGE_MSK
 \ 4 constant BME:RUN_GAS_POS
 0 constant BME:MODE_POS
 \ 0 constant BME:NBCONV_POS
-
-\ \ bme680 register buffer index settings
-\ 5 constant BME:REG_FILTER_INDEX
-\ 4 constant BME:REG_TEMP_INDEX
-\ 4 constant BME:REG_PRES_INDEX
-\ 2 constant BME:REG_HUM_INDEX
-\ 1 constant BME:REG_NBCONV_INDEX
-\ 1 constant BME:REG_RUN_GAS_INDEX
-\ 0 constant BME:REG_HCTRL_INDEX
-
-\ $72 constant BME:CTRL_HUM
-\ $73 constant BME:STATUS
-\ $74 constant BME:CTRL_MEAS
-\ $75 constant BME:CONFIG
-\ $e0 constant BME:RESET
 
 BME:COEFF_SIZE buffer: bme.calib        \ calibration data
             15 BUFFER: bme.values       \ last reading
@@ -383,10 +357,12 @@ align
 : bme-select-gas-heater-profile! ( nb_profile -- )
   $0 swap ( nb ) $0F $71 bme-bits!
   ;
-: temp-offset! ( n -- )
+: bme-temp-offset! ( n -- )
   dup 0<> if
     \ int(copysign((((int(abs(value) * 100)) << 8) - 128) / 5, value))
-    dup dup abs 100 * 8 lshift 128 - 5 * -rot abs / *
+    dup dup abs 8 lshift 128 - 5 / -rot abs / *
+  else
+    0
   then
   bme.tfine_adj !
   ;
@@ -402,23 +378,7 @@ align
   drop
   ;
 
-: bme-hptg ( -- rawg grange rawh rawp rawt )
-  bme.values BME:FIELD_LENGTH BME:FIELD0_ADDR bme-rd        \ read sensor data
-  drop
-  \ TODO move these into their own word
-  bme.values 13 + c@ 2 lshift
-  bme.values 14 + c@ 6 rshift or                \ gas_adc
-
-  bme.values 14 + c@ BME:GAS_RANGE_MSK and      \ gas_range_r
-
-  bme.values 8 + dup c@ 8 lshift swap 1+ c@ or  \ humidity
-  2 bme-u20be                                   \ pressure
-  5 bme-u20be                                   \ temperature
-  ;
-
-: bme-amb-temp ( -- T )
-  bme.tfine @ 5 * 128 + 8 arshift
-  ;
+: bme-amb-temp ( -- T ) 5 * 128 + 8 arshift ;
 
 : bme-tcalc ( rawt -- t100 )
   \ var1 = ((int32_t)temp_adc >> 3) - ((int32_t)par_t1 << 1)
@@ -433,7 +393,7 @@ align
   ( var3 ) bme-par-t3 4 lshift 14 *>>
   ( var2 ) ( var3 ) + bme.tfine_adj @ +
   bme.tfine !
-  bme-amb-temp
+  bme.tfine @ bme-amb-temp
   ;
 
 : bme-pcalc ( rawp -- p1 )
@@ -491,7 +451,7 @@ align
   \ hum_comp = (((var3 + var6) >> 10) * ((int32_t) 1000)) >> 12;
 
   \ bme.tfine @ 5 * 128 + 8 arshift >r
-  bme-amb-temp >r
+  bme.tfine @ bme-amb-temp >r
   bme-par-h1 4 lshift -
   r@ ( temp_scaled ) bme-par-h3 * 100 / 1 arshift -
   r@ ( temp_scaled ) bme-par-h4 * 100 /
@@ -505,35 +465,7 @@ align
   0 max 100000 min
   ;
 
-: bme-range-sw-err2 ( -- )
-  bme.calib 44 + c@
-  \ 8 twos-comp
-  $f0 and 4 rshift
-  \ inline
-  ;
 : bme-gres ( rawg grange -- r )
-  \ (int64_t)var1 = (int64_t)(((1340 + (5 * (int64_t)range_switching_error)) *
-  \                     (( int64_t)const_array1_int[gas_range])) >> 16);
-  \ (int64_t)var2 = (int64_t)(gas_adc << 15) - (int64_t)(16777216) + var1;
-  \ (int64_t)var3 = (int64_t)(const_array2_int[gas_range]  * (int64_t)var1) >> 9;
-  \ (int32_t)gas_res = (uint32_t)((var3 + ((int64_t)var2 >> 1)) / (int64_t)var2)
-
-  \ TODO might be some issues here
-  \      and ud* should be signed
-
-  \ int64_t var1;
-  \ uint64_t var2;
-  \ int64_t var3;
-  \ uint32_t calc_gas_res;
-  \
-  \ var1 = (int64_t) ((1340 + (5 * (int64_t) dev->calib.range_sw_err)) *
-  \  			((int64_t) lookupTable1[gas_range])) >> 16;
-  \ var2 = (((int64_t) ((int64_t) gas_res_adc << 15) - (int64_t) (16777216)) + var1);
-  \ var3 = (((int64_t) lookupTable2[gas_range] * (int64_t) var1) >> 9);
-  \ calc_gas_res = (uint32_t) ((var3 + ((int64_t) var2 >> 1)) / (int64_t) var2);
-  \
-  \ return calc_gas_res;
-
   >r
   1340 bme-range-sw-err 5 * +
   BME:GAS_RANGE_CONST1 r@ ( grange ) cells + @
@@ -569,9 +501,7 @@ align
 
   200 max 400 min
 
-  \ bme.tfine @ 5 * 128 + 8 arshift bme-par-gh3 * 10 / 8 lshift
-  bme-amb-temp bme-par-gh3 * 10 / 8 lshift
-  \ bme-amb-temp bme-par-gh3 * 1000 / 256 *
+  bme.tfine @ bme-amb-temp bme-par-gh3 * 10 / 8 lshift
   swap
   bme-par-gh2 154009 + ( temp ) * 5 * 100 / 3276800 + 10 /
   bme-par-gh1 784 + *
@@ -591,23 +521,36 @@ align
   ( t ) bme-heater-duration swap BME:GAS_WAIT0_ADDR ( nb_profile ) + bme-reg!
   ;
 
+: bme-hptg ( -- g h1000 p100 T )
+  bme.values BME:FIELD_LENGTH BME:FIELD0_ADDR bme-rd        \ read sensor data
+  drop
+  \ TODO move these into their own word
+  bme.values 13 + c@ 2 lshift
+  bme.values 14 + c@ 6 rshift or                \ gas_adc
+
+  bme.values 14 + c@ BME:GAS_RANGE_MSK and      \ gas_range_r
+  bme-gres
+
+  bme.values 8 + dup c@ 8 lshift swap 1+ c@ or  \ humidity
+  bme-hcalc
+  2 bme-u20be                                   \ pressure
+  bme-pcalc
+  5 bme-u20be                                   \ temperature
+  bme-tcalc
+  ;
+
 : bme-sensor> ( -- )
   BME:FORCED_MODE bme-mode!
-  false
+  false                                         \ return value
 
   10 0 do
     BME:FIELD0_ADDR bme-reg@
     ( status ) BME:NEW_DATA_MSK and 0= if
       10 ms
     else
-      drop
+      drop                                      \ drop return value
       \ bme.values BME:FIELD_LENGTH BME:FIELD0_ADDR bme-rd
       bme-hptg
-
-      \ bme-tcalc
-      \ bme-pcalc
-      \ bme-hcalc
-      \ bme-gres
 
       \ self.data.status = regs[0] & constants.NEW_DATA_MSK
       \ # Contains the nb_profile used to obtain the current measurement
@@ -637,7 +580,7 @@ align
   3 bme-pressure-oversample!     \ 4x
   4 bme-temperature-oversample!  \ 8x
   \ TODO fix temp offset
-  0 temp-offset!
+  0 bme-temp-offset!
   2 bme-filter!                  \ 3
   true bme-gas-status!           \ enable gas
   ;
