@@ -2,7 +2,7 @@
 \ ( datagram start: ) here dup hex.
 
 \ datagram packet format:
-\   [len, to, from, flags/seq, data, ...]
+\   [len, to, from, flags/seq, data[0], ..., data[n]]
 
 \ --------------------------------------------------
 \  Configuration
@@ -26,8 +26,6 @@ RF:MAXDATA buffer: dg.buf
 \ --------------------------------------------------
 \  Internal Helpers
 \ --------------------------------------------------
-
-: yield ( -- ) sleep ;
 
 : dg-seq@ ( -- n ) dg.seq# @ ;
 : dg-seq! ( n -- ) dg.seq# ! ;
@@ -79,7 +77,7 @@ RF:MAXDATA buffer: dg.buf
   dg-wait-sent
   ;
 
-: dg-send-retry ( addr buffer len -- ? )      \ retry sending
+: dg-send-retry ( buffer len -- ? )      	    \ retry sending
   rot false                                   \ set return value
 
   DG:RETRIES 0 do
@@ -93,8 +91,8 @@ RF:MAXDATA buffer: dg.buf
 \   External API
 \ --------------------------------------------------
 
-: dg-send-to ( buffer len addr -- n )         \ send out one packet for node
-  ( swap DG:MAXDATA min swap )                 \ bounds check payload
+: dg-send-to ( addr len addr -- ? )         	\ send out one packet for node
+  ( swap DG:MAXDATA min swap )                  \ bounds check payload
   2dup
   ( len addr ) dg-set-header
   dg-seq++ dg.pkt-seq c!                      \ increment and set seq
