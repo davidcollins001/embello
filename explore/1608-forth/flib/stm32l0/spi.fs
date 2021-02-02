@@ -17,6 +17,8 @@ $40013000 constant SPI1
 \    SPI1 $14 + constant SPI1-RXCRCR
 \    SPI1 $18 + constant SPI1-TXCRCR
 
+1  constant SPI:RXNE
+
 : spi? ( -- )
   SPI1
   cr ."     CR1 " dup @ hex. 4 +
@@ -33,6 +35,9 @@ $40013000 constant SPI1
 : +spi ( -- ) $10000 ssel.bit @ lshift ssel.addr @ ! inline ;  \ select SPI
 : -spi ( -- )      1 ssel.bit @ lshift ssel.addr @ ! inline ;  \ deselect SPI
 
+: spi-wait ( -- )
+  begin SPI:RXNE bit SPI1-SR bit@ not while yield repeat
+  ;
 : >spi> ( c -- c )  \ hardware SPI, 8 bits
   SPI1-DR !  begin SPI1-SR @ 1 and until  SPI1-DR @ ;
 
@@ -117,8 +122,10 @@ $40013000 constant SPI1
   OMODE-AF-PP MISO   io-mode!
   OMODE-AF-PP MOSI   io-mode!
 
-  12 bit RCC-APB2ENR bis!  \ set SPI1EN
+  12 bit RCC-APB2ENR bis!   \ set SPI1EN
   %0000001101000100 SPI1-CR1 !  \ clk/2, i.e. 8 MHz, master
   SPI1-SR @ drop  \ appears to be needed to avoid hang in some cases
   2 bit SPI1-CR2 bis!  \ SS output enable
   ;
+
+compiletoram? not [if]  cornerstone <<<spi>>> [then]

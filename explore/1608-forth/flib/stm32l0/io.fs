@@ -2,7 +2,7 @@
 
 \ TODO need to move registers to device specific location
 $E000E100  constant NVIC-EN0R           \ IRQ 0 to 31 Set Enable Register
-NVIC-ENOR $304 + constant NVIC-IPR1     \ interrupt priority
+NVIC-EN0R $304 + constant NVIC-IPR1     \ interrupt priority
 
 $50000000 constant GPIO-BASE
       $00 constant GPIO.MODER   \ Reset 0 Port Mode Register

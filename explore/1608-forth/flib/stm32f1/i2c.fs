@@ -36,23 +36,23 @@ $40005800 constant I2C2
 
     DMA1      constant DMA1-ISR
     DMA1 4  + constant DMA1-IFCR
-    
-    DMA1 20 6 1- * + 
+
+    DMA1 20 6 1- * +
     dup $08 + constant DMA1-CCR6
     dup $0c + constant DMA1-CNDTR6
     dup $10 + constant DMA1-CPAR6
     dup $14 + constant DMA1-CMAR6
     drop
-    
-    DMA1 20 7 1- * + 
+
+    DMA1 20 7 1- * +
     dup $08 + constant DMA1-CCR7
     dup $0c + constant DMA1-CNDTR7
     dup $10 + constant DMA1-CPAR7
     dup $14 + constant DMA1-CMAR7
     drop
-         
-    $E000E000 constant NVIC  
-    NVIC $100 + constant NVIC_ISER0 
+
+    $E000E000 constant NVIC
+    NVIC $100 + constant NVIC_ISER0
 
 \ Register constants
 3  bit constant APB2-GPIOB-EN
@@ -66,7 +66,7 @@ $40005800 constant I2C2
 6  bit constant i2c-SR1-RxNE
 7  bit constant i2c-SR1-TxE
 10 bit constant i2c-SR1-AF
-0  bit constant i2c-SR2-MSL 
+0  bit constant i2c-SR2-MSL
 1  bit constant i2c-SR2-BUSY
 
 \ Bit setting
@@ -77,7 +77,7 @@ $40005800 constant I2C2
 : i2c-SR1-flag? I2C1-SR1 hbit@ ;
 : i2c-SR2-flag? I2C1-SR2 hbit@ ;
 : i2c-SR1-wait  ( u -- )   begin dup i2c-SR1-flag?    until drop ;
-: i2c-SR2-!wait ( u -- )   begin dup i2c-SR2-flag? 0= until drop ; 
+: i2c-SR2-!wait ( u -- )   begin dup i2c-SR2-flag? 0= until drop ;
 
 \ debugging
 : i2c? cr I2C1-CR1 h@ hex. I2C1-CR2 h@ hex. I2C1-SR1 h@ hex. I2C1-SR2 h@ hex. ;
@@ -88,7 +88,7 @@ $40005800 constant I2C2
 : i2c-start  ( -- ) \ set start bit and wait for start condition
   i2c-start! i2c-SR1-SB i2c-SR1-wait ;
 : i2c-stop   ( -- ) \ stop and wait
-  i2c-stop! i2c-SR2-MSL i2c-SR2-!wait ; 
+  i2c-stop! i2c-SR2-MSL i2c-SR2-!wait ;
 : i2c-DR!    ( u -- )  I2C1-DR c! ;            \ Writes data register
 
 \ STM Events
@@ -106,7 +106,7 @@ $40005800 constant I2C2
 : i2c-EV7   i2c-SR1-RxNE i2c-SR1-wait ;
 
 : i2c-addr     ( u --)  \ Start a new transaction
-  i2c-SR2-BUSY begin pause dup i2c-SR2-flag? 0= until drop 
+  i2c-SR2-BUSY begin pause dup i2c-SR2-flag? 0= until drop
 
   i2c.txbuf i2c-bufsize init-ring
   i2c.rxbuf i2c-bufsize init-ring
@@ -129,7 +129,7 @@ $40005800 constant I2C2
 ;
 
 : i2c-irq-err? ( channel -- )                 \ Was the irq triggered by error?
-  1- 4 * 3 + bit DMA1-ISR bit@ inline ;       \ TEIFx 
+  1- 4 * 3 + bit DMA1-ISR bit@ inline ;       \ TEIFx
 
 
 : i2c-irq-done? ( channel -- )                \ Was the irq for complete xfer?
@@ -155,7 +155,7 @@ $40005800 constant I2C2
   ipsr dup $fe and  32 <> if drop i2c.collect @ execute exit then  ( ipsr)
   \ i2c.irq-handler @ execute
   case
-    32 of \ TX event: stop or RX 
+    32 of \ TX event: stop or RX
       6 i2c-irq-done? if
         6 i2c-dma-disable
         21 bit DMA1-IFCR  bis!                    \ CTCIF6
@@ -177,7 +177,7 @@ $40005800 constant I2C2
           7 i2c-dma-enable
           \ Start rx (will wait for I2C1 to be ready)
           12 bit I2C1-CR2  hbis!                  \ LAST
-          \ Send restart  
+          \ Send restart
           i2c-start                               \ Restart
           1 i2c-send-addr drop
         endcase
@@ -199,12 +199,12 @@ $40005800 constant I2C2
 
 \ APB1 speed
 : apb1-hz ( -- u )
-  RCC-CFGR @ 
-  dup $80 and if 
+  RCC-CFGR @
+  dup $80 and if
     dup $70 and 4 rshift
     dup 2 bit and if 1+ then
-    1+ bit 
-  else 1 
+    1+ bit
+  else 1
   then   \ HPRE prescaler
   swap ( HPRE CFGR)
   dup 10 bit and if $300 and 8 rshift 1+ bit else drop 1 then   \ PPRE1 prescaler
@@ -213,8 +213,8 @@ $40005800 constant I2C2
 
 : i2c-standard ( -- )   \ Configure I2C for Standard Mode (~100kHz)
   0  bit  I2C1-CR1 hbic!                          \ Disable peripheral
-  i2c-SR2-BUSY begin pause dup i2c-SR2-flag? 0= until drop 
-  
+  i2c-SR2-BUSY begin pause dup i2c-SR2-flag? 0= until drop
+
   $3F                   I2C1-CR2   hbic!          \ CLEAR FREQ field
   apb1-hz 1000    /                               \ APB1 speed (kHz)
   dup     1000    / dup I2C1-CR2   hbis!          \ Set current clock speed (MHz)
@@ -226,8 +226,8 @@ $40005800 constant I2C2
 \ Configure I2C for Fast Mode
 : i2c-fast     ( -- )   \ Configure I2C for fast mode (~400kHz)
   0  bit  I2C1-CR1 hbic!                          \ Disable peripheral
-  i2c-SR2-BUSY begin pause dup i2c-SR2-flag? 0= until drop 
-  
+  i2c-SR2-BUSY begin pause dup i2c-SR2-flag? 0= until drop
+
   $3F                         I2C1-CR2   hbic!      \ CLEAR FREQ field
   apb1-hz 1000    /                                 \ APB1 speed (kHz)
   dup     1000    / dup       I2C1-CR2   hbis!      \ Set current clock speed (MHz)
@@ -249,7 +249,7 @@ $40005800 constant I2C2
   \ init GPIO
   IMODE-FLOAT SCL io-mode!  \ edited: manual says use floating input
   IMODE-FLOAT SDA io-mode!
-  OMODE-AF-OD OMODE-FAST + SCL io-mode!  \ I²C requires external pullup
+  OMODE-AF-OD OMODE-FAST + SCL io-mode!  \ I2C requires external pullup
   OMODE-AF-OD OMODE-FAST + SDA io-mode!  \     resistors on SCL and SDA
 
   \ Reset I2C peripheral
@@ -259,7 +259,7 @@ $40005800 constant I2C2
   \ Enable I2C peripheral
   21 bit RCC-APB1ENR bis!  \ set I2C1EN
   i2c-standard
-  i2c-SR2-BUSY begin pause dup i2c-SR2-flag? 0= until drop 
+  i2c-SR2-BUSY begin pause dup i2c-SR2-flag? 0= until drop
 
   0  bit RCC-AHBENR bis!   \ Enable DMA peripheral clock
   0  bit DMA1-CCR6  bic!   \ Disable it for now (ch 6 = I2C1 TX)
@@ -270,7 +270,7 @@ $40005800 constant I2C2
       drop
       ['] nop
     then
-    i2c.collect ! 
+    i2c.collect !
     ['] i2c-irq-dispatch irq-collection !
   then
  ;
@@ -289,7 +289,7 @@ $40005800 constant I2C2
   I2C1-DR           DMA1-CPAR6  !
   i2c.txbuf ring#   DMA1-CNDTR6 !            \ Count
   \ Configure DMA 7
-  %0011000010001010 DMA1-CCR7   !   
+  %0011000010001010 DMA1-CCR7   !
   17 bit            NVIC_ISER0  !
   i2c.rxbuf 4 +     DMA1-CMAR7  !
   I2C1-DR           DMA1-CPAR7  !
@@ -324,7 +324,7 @@ $40005800 constant I2C2
   dup 0<> if
     i2c-stop
     i2c-SR1-AF i2c1-SR1 hbic!                \ Clear the NAK flag; necessary?
-    9 bit I2C1-CR1 hbic! 
+    9 bit I2C1-CR1 hbic!
   then
 ;
 
@@ -332,7 +332,7 @@ $40005800 constant I2C2
   i2c.txbuf >ring ;
 
 : i2c>         ( -- u ) \ Receives 1 byte from i2c. Use after i2c-xfer. Waits.
-  begin i2c.rxbuf ring# 0<> until 
+  begin i2c.rxbuf ring# 0<> until
   i2c.rxbuf ring> ;
 
 : i2c>h        ( -- u ) \ Receives 16 bit word from i2c, lsb first.

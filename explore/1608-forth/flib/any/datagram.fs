@@ -129,7 +129,7 @@ RF:MAXDATA buffer: dg.buf
   cr
   begin
     dg-recv if
-	  rf.pkt-handler @ execute
+	  rf.packet-handler @ execute
     then
     yield
   key? until

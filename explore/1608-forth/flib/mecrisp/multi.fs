@@ -151,6 +151,8 @@ boot-task variable up \ User Pointer
 
 : sleep ( -- ) [ $BF30 h, ] inline ; \ WFI Opcode, enters sleep mode
 
+: yield ( -- ) sleep ;
+
 task: lowpower-task
 
 : lowpower& ( -- )

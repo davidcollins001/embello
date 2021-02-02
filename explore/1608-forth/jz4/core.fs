@@ -1,19 +1,21 @@
 \ core libraries
 
-<<<board>>>
 compiletoflash
 ( core start: ) here dup hex.
+
+include ../flib/stm32l0/spi.fs
+include ../flib/any/dma.fs
+include ../flib/stm32l0/i2c.fs
 
 include ../flib/i2c/ssd1306.fs
 include ../flib/mecrisp/graphics.fs
 include ../flib/any/digits.fs
-include ../flib/mecrisp/quotation.fs
-include ../flib/mecrisp/multi.fs
-cornerstone <<<core>>>
 include ../flib/any/varint.fs
 
-include ../flib/spi/rf69.fs
-include ../flib/spi/datagram.fs
+PA15 variable ssel  \ can be changed at run time
+PB3 constant SCLK
+PB4 constant MISO
+PB5 constant MOSI
 
-( rf69 end, size: ) here dup hex. swap - .
-compiletoram
+( board end, size: ) here dup hex. swap - .
+compiletoram? not [if]  cornerstone <<<core>>> [then]

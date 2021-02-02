@@ -14,14 +14,9 @@ include ../flib/stm32l0/hal.fs
 include ../flib/stm32l0/adc.fs
 include ../flib/stm32l0/timer.fs
 include ../flib/stm32l0/pwm.fs
-include ../flib/stm32l0/i2c.fs
 include ../flib/stm32l0/sleep.fs
-
-PA15 variable ssel  \ can be changed at run time
-PB3 constant SCLK
-PB4 constant MISO
-PB5 constant MOSI
-include ../flib/stm32l0/spi.fs
+include ../flib/mecrisp/quotation.fs
+include ../flib/mecrisp/multi.fs
 
 PA8 constant LED
 
@@ -61,5 +56,4 @@ PA8 constant LED
   ['] fake-key? hook-key? ! ;
 
 ( board end, size: ) here dup hex. swap - .
-cornerstone <<<board>>>
-compiletoram
+compiletoram? not [if]  cornerstone <<<board>>> [then]

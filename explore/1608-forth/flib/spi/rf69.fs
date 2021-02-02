@@ -9,10 +9,6 @@
 \  Configuration
 \ --------------------------------------------------
 
-\ TODO need to move registers to central location
-\ TODO remove when io.fs flashed
-NVIC-EN0R $304 + constant NVIC-IPR1
-
        $00 constant RF:FIFO
        $01 constant RF:OP
        $07 constant RF:FRF
@@ -134,6 +130,24 @@ decimal
 : rf-n!spi ( addr len -- )  \ write N bytes to the FIFO
   +spi RF:FIFO $80 or >spi 0 ?do dup c@ >spi 1+ loop drop -spi
   ;
+: rf>buf ( addr len -- )
+  \ TODO deal with dma config better
+  \ disable minc for tx
+  7 bit DMA1-CCR DMA1:MEM-CHAN dma-reg bic!
+
+  RF:FIFO spi.cmd !
+  over
+    1   spi.cmd rot ( addr ) +dma-spi  spi-wait
+  ( n ) spi.cmd rot ( addr ) +dma-spi  spi-wait
+  -spi
+  ;
+: buf>rf ( addr len -- )
+  \ use 2 dma operations to send command and data separately
+  RF:FIFO $80 or spi.cmd c!
+         1   spi.cmd  0 +dma-spi  spi-wait
+  swap ( n ) ( addr ) 0 +dma-spi  spi-wait
+  -spi
+  ;
 
 : rf-mode-ready
   \ TODO interrupts DIO5
@@ -179,7 +193,7 @@ decimal
 : rf-pkt# ( -- n )                         \ pkt length, fetch from radio if variable
   RF:PAYLOAD_LEN rf@ RF:MAXDATA min
   ;
-: rf-fifo@ ( -- ) rf.buf rf.fixed-pkt# @ rf-n@spi ;
+: rf-fifo@ ( -- ) rf.buf rf.fixed-pkt# @ rf>buf ;
 
 : rf-status ( -- )                      \ update status values on sync match
   RF:RSSI rf@  rf.rssi !
@@ -259,6 +273,10 @@ decimal
 
 : rf-init ( freq group node modem conf -- )       \ init RFM69
   spi-init
+
+  \ enable dma
+  false DMA1:SPI-RX-CHAN dma-spi-init
+  true  DMA1:SPI-TX-CHAN dma-spi-init
 
   rf-check                                  \ will hang if there is no radio!
 
@@ -348,7 +366,7 @@ decimal
   $0 $25 rf!                            \ set trigger for PacketReady on DIO0
   rf-sending-s!
 
-  ( buffer len ) rf-n!spi
+  ( buffer len ) buf>rf
   rf-tx-mode!
   true
   ;
@@ -373,4 +391,4 @@ decimal
   \ $3B rf!
   \ ;
 
-compiletoram? not [if]  cornerstone <<<rf69>>> compiletoram [then]
+compiletoram? not [if]  cornerstone <<<rf69>>> [then]

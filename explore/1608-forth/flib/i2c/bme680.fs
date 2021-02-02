@@ -21,7 +21,7 @@ $89 constant BME:COEFF_ADDR1
 $E1 constant BME:COEFF_ADDR2
 
 \ BME680 field_x related defines
-15 constant BME:FIELD_LENGTH
+15 constant BME:FIELD_LEN
 \ 17 constant BME:FIELD_ADDR_OFFSET
 $1D constant BME:FIELD0_ADDR
 
@@ -161,9 +161,8 @@ align
 : bme-i2c+ ( addr -- addr+1 ) i2c> over c! 1+ ;
 : bme-rd ( addr n reg -- addr+n )
   bme.addr i2c-addr
-  i2c-reset
-  >i2c
-  dup i2c-xfer drop
+  ( reg ) >i2c
+  dup ( n ) i2c-xfer drop
   0 do bme-i2c+ loop
   ;
 
@@ -361,8 +360,6 @@ align
   dup 0<> if
     \ int(copysign((((int(abs(value) * 100)) << 8) - 128) / 5, value))
     dup dup abs 8 lshift 128 - 5 / -rot abs / *
-  else
-    0
   then
   bme.tfine_adj !
   ;
@@ -521,25 +518,35 @@ align
   ( t ) bme-heater-duration swap BME:GAS_WAIT0_ADDR ( nb_profile ) + bme-reg!
   ;
 
-: bme-hptg ( -- g h1000 p100 T )
-  bme.values BME:FIELD_LENGTH BME:FIELD0_ADDR bme-rd        \ read sensor data
+: bme-hptg ( -- g h1000 p100 T100 )
+  bme.values BME:FIELD_LEN BME:FIELD0_ADDR bme-rd        	 \ read sensor data
   drop
+
+  \ gas resistance meanings
+  \ 521177 - 431331 - good?
+  \ 297625 - 213212 - average ?
+  \ 148977 - 108042 - little bad ?
+  \ 75010 - 54586 - bad ?
+  \ 37395 - 27080 - worse ?
+  \ 18761 - 13591 - very bad ?
+  \ 9008 - 8371 - can't see the exit ?
+
   \ TODO move these into their own word
   bme.values 13 + c@ 2 lshift
-  bme.values 14 + c@ 6 rshift or                \ gas_adc
+  bme.values 14 + c@ 6 rshift or                            \ gas_adc
 
-  bme.values 14 + c@ BME:GAS_RANGE_MSK and      \ gas_range_r
+  bme.values 14 + c@ BME:GAS_RANGE_MSK and                  \ gas_range_r
   bme-gres
 
-  bme.values 8 + dup c@ 8 lshift swap 1+ c@ or  \ humidity
+  bme.values 8 + dup c@ 8 lshift swap 1+ c@ or              \ humidity
   bme-hcalc
-  2 bme-u20be                                   \ pressure
+  2 bme-u20be                                               \ pressure
   bme-pcalc
-  5 bme-u20be                                   \ temperature
+  5 bme-u20be                                               \ temperature
   bme-tcalc
   ;
 
-: bme-sensor> ( -- )
+: bme-sensor> ( -- g h1000 p100 T100 ? )
   BME:FORCED_MODE bme-mode!
   false                                         \ return value
 
@@ -549,7 +556,7 @@ align
       10 ms
     else
       drop                                      \ drop return value
-      \ bme.values BME:FIELD_LENGTH BME:FIELD0_ADDR bme-rd
+      \ bme.values BME:FIELD_LEN BME:FIELD0_ADDR bme-rd
       bme-hptg
 
       \ self.data.status = regs[0] & constants.NEW_DATA_MSK
@@ -563,7 +570,10 @@ align
   ;
 
 : bme-init ( -- nak )               \ init the bme680 into continuous mode
-  i2c-init bme-reset
+  i2c-init
+  true DMA1:I2C-RX-CHAN dma-i2c-init
+  true DMA1:I2C-TX-CHAN dma-i2c-init
+  bme-reset
   BME:SLEEP_MODE bme-mode!
 
   \ chip id
@@ -577,8 +587,8 @@ align
 
   \ set oversampling and sleep mode
   2 bme-humidity-oversample!     \ 2x
-  3 bme-pressure-oversample!     \ 4x
-  4 bme-temperature-oversample!  \ 8x
+  3 bme-pressure-oversample!     \ 2x
+  4 bme-temperature-oversample!  \ 2x
   \ TODO fix temp offset
   0 bme-temp-offset!
   2 bme-filter!                  \ 3
@@ -589,4 +599,4 @@ align
 \ bme-calib bme.calib  32 dump
 \ bme-calc . . .
 
-\ compiletoram? not [if]  cornerstone <<<bme680>>> compiletoram [then]
+compiletoram? not [if]  cornerstone <<<bme680>>> compiletoram [then]
