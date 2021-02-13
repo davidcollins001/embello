@@ -191,3 +191,5 @@ task: lowpower-task
 \         7 $E000E010 ! \ Enable the systick interrupt.
 
 \ stop \ Idle the boot task
+
+compiletoram? not [if]  cornerstone <<<multi>>> [then]

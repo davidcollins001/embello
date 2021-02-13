@@ -114,3 +114,5 @@ $40005400 constant I2C1
       then
     loop
   16 +loop ;
+
+compiletoram? not [if]  cornerstone <<<i2c>>> [then]

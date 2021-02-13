@@ -599,4 +599,4 @@ align
 \ bme-calib bme.calib  32 dump
 \ bme-calc . . .
 
-compiletoram? not [if]  cornerstone <<<bme680>>> compiletoram [then]
+compiletoram? not [if]  cornerstone <<<bme680>>> [then]

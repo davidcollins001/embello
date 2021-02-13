@@ -664,3 +664,5 @@ decimal
   10 /mod 10 /mod 10 /mod
   0 showdigit 32 showdigit 64 showdigit 96 showdigit
   display ;
+
+compiletoram? not [if]  cornerstone <<<digits>>> [then]

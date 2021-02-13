@@ -215,3 +215,4 @@ calign decimal
   4 4 14 24 line display ;
 
 \ lcd-init demo
+compiletoram? not [if]  cornerstone <<<graphics>>> [then]

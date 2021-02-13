@@ -25,3 +25,5 @@ $2C constant TIM.ARR
 
 : timer-deinit ( n -- )  \ disable timer n
   timer-enabit bic! ;
+
+compiletoram? not [if]  cornerstone <<<timer>>> [then]

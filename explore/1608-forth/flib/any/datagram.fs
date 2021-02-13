@@ -137,4 +137,4 @@ RF:MAXDATA buffer: dg.buf
   ;
 
 \ ( datagram end, size: ) here dup hex. swap - .
-compiletoram? not [if]  cornerstone <<<datagram>>> compiletoram [then]
+compiletoram? not [if]  cornerstone <<<datagram>>> [then]

@@ -30,3 +30,5 @@
   10000 rot - swap  \ reverse to sense of the PWM count value
   dup p2cmp cells swap p2tim timer-base + $34 + !  \ save to CCR1..4
 ;
+
+compiletoram? not [if]  cornerstone <<<pwm>>> [then]

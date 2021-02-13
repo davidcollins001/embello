@@ -78,3 +78,5 @@ $E000ED10 constant SCR
 \ rf-init rf-sleep
 \ led-off 2.1MHz 1000 systick-hz
 \ lptim-init lp-blink
+
+compiletoram? not [if]  cornerstone <<<slep>>> [then]

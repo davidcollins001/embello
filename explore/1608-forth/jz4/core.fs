@@ -4,8 +4,8 @@ compiletoflash
 ( core start: ) here dup hex.
 
 include ../flib/stm32l0/spi.fs
-include ../flib/any/dma.fs
 include ../flib/stm32l0/i2c.fs
+include ../flib/any/dma.fs
 
 include ../flib/i2c/ssd1306.fs
 include ../flib/mecrisp/graphics.fs

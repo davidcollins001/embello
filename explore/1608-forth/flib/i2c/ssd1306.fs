@@ -31,7 +31,7 @@
   $40 lcd!c  \ SETSTARTLINE
 
   lcdmem  16 0 do  \ send as a number of 64-byte data messages
-    $3C i2c-addr $40 >i2c 
+    $3C i2c-addr $40 >i2c
     64 0 do  dup c@ >i2c  1+ loop
     0 i2c-xfer drop
   loop drop ;
@@ -150,3 +150,5 @@ decimal
 ;
 
 \ lcd-init show-logo
+
+compiletoram? not [if]  cornerstone <<<ssd>>> [then]

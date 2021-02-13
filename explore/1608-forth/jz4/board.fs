@@ -7,6 +7,7 @@ compiletoflash
 
 include ../flib/mecrisp/calltrace.fs
 include ../flib/mecrisp/cond.fs
+include ../flib/mecrisp/quotation.fs
 include ../flib/mecrisp/hexdump.fs
 include ../flib/stm32l0/io.fs
 include ../flib/pkg/pins32.fs
@@ -15,7 +16,6 @@ include ../flib/stm32l0/adc.fs
 include ../flib/stm32l0/timer.fs
 include ../flib/stm32l0/pwm.fs
 include ../flib/stm32l0/sleep.fs
-include ../flib/mecrisp/quotation.fs
 include ../flib/mecrisp/multi.fs
 
 PA8 constant LED

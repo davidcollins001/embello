@@ -64,3 +64,5 @@ $40012400 constant ADC1
   23 bit ADC-CCR bis!  ADC-SMPR @  %111 ADC-SMPR !
   18 adc  swap  23 bit ADC-CCR bic!  ADC-SMPR !
   adc-vcc 3000 */ $1FF8007A h@ - 100 $1FF8007E h@ $1FF8007A h@ - */ 30 + ;
+
+compiletoram? not [if]  cornerstone <<<adc>>> [then]

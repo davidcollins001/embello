@@ -29,6 +29,12 @@ dup $10 + constant DMA1-CPAR
 dup $14 + constant DMA1-CMAR
 drop
 
+1 constant DMA1:MEM-CHAN                   \ dma memory channel
+2 constant DMA1:SPI-RX-CHAN                \ dma spi rx channel
+3 constant DMA1:SPI-TX-CHAN                \ dma spi tx channel
+6 constant DMA1:I2C-TX-CHAN                \ dma i2c tx channel
+7 constant DMA1:I2C-RX-CHAN                \ dma i2c rx channel
+
 false variable dma.complete
 0     variable dma.error
 
@@ -43,12 +49,6 @@ false variable dma.complete
   \ does> ( section -- data )
   \ swap cells + @
   \ ;
-
-\ 1 constant DMA1:MEM-CHAN                   \ dma memory channel
-\ 2 constant DMA1:SPI-RX-CHAN                \ dma spi rx channel
-\ 3 constant DMA1:SPI-TX-CHAN                \ dma spi tx channel
-\ 6 constant DMA1:I2C-TX-CHAN                \ dma i2c tx channel
-\ 7 constant DMA1:I2C-RX-CHAN                \ dma i2c rx channel
 
 \ \ store channel configurations
 \ irq-dma2_3 10 SPI1-DR   DMA:RX ' SPI1_CR2_RXDMAEN dma-chan dma1.spi-rx-chan
@@ -82,12 +82,12 @@ false variable dma.complete
 : -dma-spi ( -- )
   DMA1:SPI-TX-CHAN -dma
   DMA1:SPI-RX-CHAN -dma
-  ; inline
+  ;
 \ TODO check which channel is complete
 : -dma-i2c ( -- )
   DMA1:I2C-TX-CHAN -dma
   DMA1:I2C-RX-CHAN -dma
-  ; inline
+  ;
 : +dma ( n chan -- )
   tuck
   0 dma.error !
@@ -104,19 +104,11 @@ false variable dma.complete
   \ enable chan dma
   0 r> dma-conf ( dmaen-xt ) execute
   ;
-\ TODO replace these
-: +dma-spi ( addr n chan -- ) +dma-periph ;
-\ : +dma-i2c ( addr n chan -- ) +dma-periph ;
 
 : dma-wait ( -- ) begin dma.complete @ not while yield repeat ;
-  \ wait for dma to complete then wait for i2c to finish
+\ wait for dma to complete then wait for i2c to finish
 : dma-i2c-wait ( -- ) dma-wait begin 6 bit I2C1-ISR bit@ until ;
 
-: nvic! ( irq-pos -- )                                      \ enable interrupt
-      dup ( irq-pos ) bit NVIC-EN0R   bis!
-  $C over ( irq-pos ) 4 mod 4 * lshift
-          ( irq-pos ) 4 / cells NVIC-IPR1 + bis!
-  ;
 : dma-irq-exit ( -- ) DMA1-ISR @ $1111111 and DMA1-IFCR bis! ; inline  \ clear irq flag
 : dma-irq-handler ( -- )
   $8888888 DMA1-ISR @ and dma.error !                     \ write error channel

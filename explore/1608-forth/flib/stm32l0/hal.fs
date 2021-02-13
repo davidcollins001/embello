@@ -146,3 +146,5 @@ $40022000 constant FLASH
   cr dictionarystart begin
     dup 6 + ctype space
   dictionarynext until drop ;
+
+compiletoram? not [if]  cornerstone <<<hal>>> [then]

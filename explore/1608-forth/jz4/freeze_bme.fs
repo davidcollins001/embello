@@ -8,7 +8,6 @@ include core.fs
 compiletoflash
 \ include dev.fs
 
-include ../flib/any/varint.fs
 include ../flib/spi/rf69.fs
 include ../flib/any/datagram.fs
 
@@ -18,3 +17,4 @@ include ../flib/i2c/bme680.fs
 
 \ run tests, even when connected (especially so, in fact!)
 \ : init init ( unattended ) blip ;
+\ : init ( -- ) init unattended main ;
