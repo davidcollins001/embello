@@ -18,7 +18,7 @@ include ../flib/stm32l0/pwm.fs
 include ../flib/stm32l0/sleep.fs
 include ../flib/mecrisp/multi.fs
 
-PA8 constant LED
+[ifndef] LED  PA8 constant LED  [then]
 
 : led-on LED ioc! ;
 : led-off LED ios! ;
@@ -32,11 +32,17 @@ PA8 constant LED
   ['] ct-irq irq-fault !  \ show call trace in unhandled exceptions
   $00 hex.empty !  \ empty flash shows up as $00 iso $FF on these chips
   OMODE-PP LED io-mode!
-\ 16MHz ( set by Mecrisp on startup to get an accurate USART baud rate )
+  \ 16MHz ( set by Mecrisp on startup to get an accurate USART baud rate )
   2 RCC-CCIPR !  \ set USART1 clock to HSI16, independent of sysclk
   1000 systick-hz
   hello ." ok." cr
 ;
+
+: nvic! ( irq-pos -- )                                      \ enable interrupt
+      dup ( irq-pos ) bit NVIC-EN0R   bis!
+  $C over ( irq-pos ) 4 mod 4 * lshift
+          ( irq-pos ) 4 / cells NVIC-IPR1 + bis!
+  ;
 
 : rx-connected? ( -- f )  \ true if RX is connected (and idle)
   IMODE-LOW PA10 io-mode!  PA10 io@ 0<>  OMODE-AF-PP PA10 io-mode!

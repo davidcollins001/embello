@@ -21,14 +21,14 @@ $89 constant BME:COEFF_ADDR1
 $E1 constant BME:COEFF_ADDR2
 
 \ BME680 field_x related defines
-15 constant BME:FIELD_LEN
-\ 17 constant BME:FIELD_ADDR_OFFSET
+$15 constant BME:FIELD_LEN
+\ $17 constant BME:FIELD_ADDR_OFFSET
 $1D constant BME:FIELD0_ADDR
 
 \ soft reset command
 $B6 constant BME:SOFT_RESET_CMD
 $E0 constant BME:SOFT_RESET_ADDR
-10  constant BME:RESET_PERIOD
+$10 constant BME:RESET_PERIOD
 
 \ register map
 \ other coefficient's address
@@ -115,9 +115,10 @@ $0f constant BME:GAS_RANGE_MSK
 \ 0 constant BME:NBCONV_POS
 
 BME:COEFF_SIZE buffer: bme.calib        \ calibration data
-            15 BUFFER: bme.values       \ last reading
+BME:FIELD_LEN  buffer: bme.values       \ last reading
          1000 variable bme.tfine        \ used for p & h compensation default ~20 deg
             0 variable bme.tfine_adj    \ adjust tfine
+						0 variable bme.gas_wait			\ gas heater time
 
 create BME:GAS_RANGE_CONST1    \ gas resistance constants array1
   2147483647 , 2147483647 , 2147483647 , 2147483647 , 2147483647 ,
@@ -132,57 +133,48 @@ create BME:GAS_RANGE_CONST2     \ gas resistance constants array2
   4000000 ,   2000000 ,   1000000 ,   500000 , 250000 ,    125000 ,
 align
 
-: bme-reset ( -- ) \ software reset of the bme680
-  bme.addr i2c-addr
-  BME:SOFT_RESET_ADDR >i2c bme:soft_reset_cmd >i2c
-  0 i2c-xfer drop
-  ;
-
-: bme-reg@ ( reg -- val )               \ get single register
-  bme.addr i2c-addr
-  i2c-reset
-  ( reg ) >i2c 1 i2c-xfer
-  drop
-  i2c.buf c@
-  ;
-
-: bme-reg! ( val reg -- )              \ set single register
-  bme.addr i2c-addr
-  i2c-reset
-  ( reg ) >i2c ( val ) >i2c 0 i2c-xfer
-  drop
-  ;
-
-: bme-bits! ( pos value mask reg -- )
-  dup >r bme-reg@ swap ( mask ) not and  -rot swap lshift or
-  r> bme-reg!
-  ;
-
-: bme-i2c+ ( addr -- addr+1 ) i2c> over c! 1+ ;
-: bme-rd ( addr n reg -- addr+n )
-  bme.addr i2c-addr
-  ( reg ) >i2c
-  dup ( n ) i2c-xfer drop
-  0 do bme-i2c+ loop
-  ;
-
 :  *>> ( n1 n2 u -- n ) >r * r> arshift ;   \ (n1 * n2) >> u
 : ^2>> ( n1 u -- n ) >r dup * r> arshift ;  \ (n1 * n1) >> u
 : darshift ( d n -- ) 0 do d2/ loop ;
 : dlshift ( d n -- ) 0 do d2* loop ;
-
-: bme-u20be ( off -- val )
-  bme.values + dup c@ 12 lshift swap 1+
-               dup c@  4 lshift swap 1+
-                   c@  4 rshift  or or
-  ;
-: twos-comp ( u bits -- n )             \ n bit twos complement (signed)
+: ~2s ( u bits -- n )                       \ n bit twos complement (signed)
   2dup
   1- 1 swap lshift and 0<> if           \ if val & (1 << (bits - 1)) != 0:
     1 swap lshift -                     \   return val - (1 << bits)
   else
     drop
   then
+  ;
+
+: bme-reset ( -- ) \ software reset of the bme680
+  bme.addr i2c-addr
+  +i2c BME:SOFT_RESET_ADDR >i2c BME:SOFT_RESET_CMD >i2c -i2c
+  ;
+
+: bme-reg@ ( reg -- val )                   \ get single register
+  bme.addr i2c-addr
+  +i2c ( reg ) >i2c i2c> -i2c
+  ;
+: bme-reg! ( val reg -- )                   \ set single register
+  bme.addr i2c-addr
+  \ +i2c ( reg ) >i2c ( val ) >i2c -i2c
+  ( reg ) *i2c! ( val ) *i2c! +i2c 2 >i2cN -i2c
+  ;
+: bme-bits! ( pos value mask reg -- )
+  dup >r bme-reg@ swap ( mask ) not and  -rot swap lshift or
+  r> ( reg ) bme-reg!
+  ;
+
+: bme-rd ( addr n reg -- addr+n )
+  bme.addr i2c-addr
+  >r 2dup + -rot r>
+  +i2c ( reg ) >i2c ( addr n ) i2c>buf-dma -i2c
+  ;
+
+: bme-u20be ( off -- val )
+  bme.values + dup c@ 12 lshift swap 1+
+               dup c@  4 lshift swap 1+
+                   c@  4 rshift  or or
   ;
 
 : bme-par-t1 ( -- par-t1 )                  \ par_t1 0xe9 / 0xea
@@ -193,11 +185,11 @@ align
 : bme-par-t2 ( -- par-t2 )                  \ par_t2 0x8a / 0x8b
   bme.calib 1+ c@
   bme.calib 2+ c@ 8 lshift or
-  16 twos-comp
+  16 ~2s
   \ inline
   ;
 : bme-par-t3 ( -- par-t3 )                  \ par_t3 0x8c
-  bme.calib 3 + c@ 8 twos-comp
+  bme.calib 3 + c@ 8 ~2s
   \ inline
   ;
 
@@ -209,46 +201,46 @@ align
 : bme-par-p2 ( -- par-p2 )                  \ par-p2  0x90 / 0x91
   bme.calib 7 + c@
   bme.calib 8 + c@ 8 lshift or
-  16 twos-comp
+  16 ~2s
   \ inline
   ;
 : bme-par-p3 ( -- par-p3 )                  \ par-p3  0x92
   bme.calib 9 + c@
-  8 twos-comp
+  8 ~2s
   \ inline
   ;
 : bme-par-p4 ( -- par-p4 )                  \ par-p4  0x94 / 0x95
   bme.calib 11 + c@
   bme.calib 12 + c@ 8 lshift or
-  16 twos-comp
+  16 ~2s
   \ inline
   ;
 : bme-par-p5 ( -- par-p5 )                  \ par-p5  0x96 / 0x97
   bme.calib 13 + c@
   bme.calib 14 + c@ 8 lshift or
-  16 twos-comp
+  16 ~2s
   \ inline
   ;
 : bme-par-p6 ( -- par-p6 )                  \ par-p60x99
   bme.calib 16 + c@
-  8 twos-comp
+  8 ~2s
   \ inline
   ;
 : bme-par-p7 ( -- par-p7 )                  \ par-p7  0x98
   bme.calib 15 + c@
-  8 twos-comp
+  8 ~2s
   \ inline
   ;
 : bme-par-p8 ( -- par-p8 )                  \ par-p8  0x9c / 0x9d
   bme.calib 19 + c@
   bme.calib 20 + c@ 8 lshift or
-  16 twos-comp
+  16 ~2s
   \ inline
   ;
 : bme-par-p9 ( -- par-p9 )                  \ par-p9  0x9e / 0x9f
   bme.calib 21 + c@
   bme.calib 22 + c@ 8 lshift or
-  16 twos-comp
+  16 ~2s
   \ inline
   ;
 : bme-par-p10 ( -- par-p10 )                \ par-p10 0xa0
@@ -257,59 +249,49 @@ align
   ;
 
 : bme-par-h1 ( -- par-h1 )                  \ par-h1 0xe2<7:4> / 0xe3
-  \ calibration[h1_msb_reg] << hum_reg_shift_val) |
-  \     (calibration[h1_lsb_reg] & bit_h1_data_msk)
   bme.calib 26 + c@ $f and
   bme.calib 27 + c@ 4 lshift or
-  \ $e3 bme-reg@ 4 lshift $e2 bme-reg@ $f and or
   \ inline
   ;
 : bme-par-h2 ( -- par-h2 )                  \ par-h2 0xe2<7:4> / 0xe1
   bme.calib 26 + c@ 4 rshift
   bme.calib 25 + c@ 4 lshift or
-  \ $e1 bme-reg@ 4 lshift $e2 bme-reg@ 4 rshift or
   ;
 : bme-par-h3 ( -- par-h3 )                  \ par-h3 0xe4
   bme.calib 28 + c@
-  8 twos-comp
+  8 ~2s
   ;
 : bme-par-h4 ( -- par-h4 )                  \ par-h4 0xe5
   bme.calib 29 + c@
-  8 twos-comp
+  8 ~2s
   ;
 : bme-par-h5 ( -- par-h5 )                  \ par-h5 0xe6
   bme.calib 30 + c@
-  8 twos-comp
+  8 ~2s
   ;
 : bme-par-h6 ( -- par-h6 )                  \ par-h6 0xe7
   bme.calib 31 + c@
   ;
 : bme-par-h7 ( -- par-h7 )                  \ par-h7 0xe8
   bme.calib 32 + c@
-  8 twos-comp
+  8 ~2s
   ;
 
 : bme-par-gh1 ( -- )
   bme.calib 37 + c@
-  8 twos-comp
+  8 ~2s
   ;
 : bme-par-gh2 ( -- )
   bme.calib 35 + c@
   bme.calib 36 + c@ 8 lshift or
-  16 twos-comp
+  16 ~2s
   ;
 : bme-par-gh3 ( -- )
   bme.calib 38 + c@
-  8 twos-comp
+  8 ~2s
   ;
 
 : bme-heat-stable? ( -- )
-  \ BME:FIELD0_ADDR bme-reg@
-  \ bme.values 14 + c@ $20 and   \ gas_valid_r
-  \ or
-  \ bme.values 14 + c@ $10 and    \ heat_stab_r
-  \ or
-  \ $10 and    \ heat_stab_r
   bme.values 14 + c@ $10 and    \ heat_stab_r
   ;
 : bme-res-heat-range ( -- )
@@ -319,18 +301,17 @@ align
   ;
 : bme-res-heat-val ( -- )
   bme.calib 43 + c@
-  8 twos-comp
+  8 ~2s
   \ inline
   ;
 : bme-range-sw-err ( -- )
   bme.calib 44 + c@
-  8 twos-comp
+  8 ~2s
   $f0 and 4 rshift
   \ inline
   ;
 : bme-data-ready? ( -- ? )
-  \ bme.values 1 $1d  bme-rd  7 bit bme.values bit@
-  BME:FIELD0_ADDR bme-reg@ ( status ) BME:NEW_DATA_MSK and
+  BME:FIELD0_ADDR bme-reg@ BME:NEW_DATA_MSK and
   ;
 
 : bme-mode! ( mode -- )
@@ -354,25 +335,24 @@ align
   4 swap ( nb ) BME:RUN_GAS_MSK $71 bme-bits!
   ;
 : bme-select-gas-heater-profile! ( nb_profile -- )
-  $0 swap ( nb ) $0F $71 bme-bits!
+  0 swap ( nb ) $0F $71 bme-bits!
   ;
 : bme-temp-offset! ( n -- )
   dup 0<> if
     \ int(copysign((((int(abs(value) * 100)) << 8) - 128) / 5, value))
-    dup dup abs 8 lshift 128 - 5 / -rot abs / *
+		( n ) s>d 1 or swap abs 8 lshift 128 - 5 / *
   then
   bme.tfine_adj !
   ;
 
 : bme-calib> ( -- )                     \ retrieve sensor calibration data
-  bme.calib BME:COEFF_ADDR1_LEN BME:COEFF_ADDR1 bme-rd
-  ( addr )  BME:COEFF_ADDR2_LEN BME:COEFF_ADDR2 bme-rd
+  bme.calib ( addr )  BME:COEFF_ADDR1_LEN BME:COEFF_ADDR1 bme-rd
+            ( addr )  BME:COEFF_ADDR2_LEN BME:COEFF_ADDR2 bme-rd
 
-  ( addr ) 1 BME:ADDR_RES_HEAT_RANGE_ADDR bme-rd
+  dup ( addr )  BME:ADDR_RES_HEAT_RANGE_ADDR bme-reg@ swap c!
 
-  ( addr ) 1 BME:ADDR_RES_HEAT_VAL_ADDR bme-rd
-  ( addr ) 1 BME:ADDR_RANGE_SW_ERR_ADDR bme-rd
-  drop
+  dup ( addr ) 1+ BME:ADDR_RES_HEAT_VAL_ADDR bme-reg@ swap c!
+      ( addr ) 2+ BME:ADDR_RANGE_SW_ERR_ADDR bme-reg@ swap c!
   ;
 
 : bme-amb-temp ( -- T ) 5 * 128 + 8 arshift ;
@@ -514,12 +494,14 @@ align
   \ set gas heater temperature
   ( T ) bme-heater-res over BME:RES_HEAT0_ADDR ( nb_profile ) + bme-reg!
   swap
+	\ store gas wait time - assume single gas setting is used
+	dup bme.gas_wait !
   \ set gas heater duration
   ( t ) bme-heater-duration swap BME:GAS_WAIT0_ADDR ( nb_profile ) + bme-reg!
   ;
 
 : bme-hptg ( -- g h1000 p100 T100 )
-  bme.values BME:FIELD_LEN BME:FIELD0_ADDR bme-rd        	 \ read sensor data
+  bme.values BME:FIELD_LEN BME:FIELD0_ADDR bme-rd        	 	\ read sensor data
   drop
 
   \ gas resistance meanings
@@ -551,37 +533,25 @@ align
   false                                         \ return value
 
   10 0 do
-    BME:FIELD0_ADDR bme-reg@
-    ( status ) BME:NEW_DATA_MSK and 0= if
-      10 ms
-    else
+    bme-data-ready? if                          \ wait for bme data
       drop                                      \ drop return value
-      \ bme.values BME:FIELD_LEN BME:FIELD0_ADDR bme-rd
       bme-hptg
-
-      \ self.data.status = regs[0] & constants.NEW_DATA_MSK
-      \ # Contains the nb_profile used to obtain the current measurement
-      \ self.data.gas_index = regs[0] & constants.GAS_INDEX_MSK
-      \ self.data.meas_index = regs[1]
-
       true leave
+    else
+	    \ wait for gas heater initially
+      i if 20 else bme.gas_wait @ then ms
     then
   loop
   ;
 
-: bme-init ( -- nak )               \ init the bme680 into continuous mode
+: bme-init ( -- *nak )               \ init the bme680 into continuous mode
   i2c-init
-  true DMA1:I2C-RX-CHAN dma-i2c-init
-  true DMA1:I2C-TX-CHAN dma-i2c-init
+  true DMA1:I2C-RX-CHAN dma-init
   bme-reset
   BME:SLEEP_MODE bme-mode!
 
   \ chip id
-  \ bme.values 1 $D0 bme-rd
-  \ 1 i2c-xfer
-
-  \ TODO why is this necessary for bme-calib> to work first time?
-  bme.calib BME:COEFF_ADDR1_LEN BME:COEFF_ADDR1 bme-rd drop
+  \ bme.values 1 BME:CHIP_ID_ADDR bme-rd
 
   bme-calib>
 
@@ -589,7 +559,6 @@ align
   2 bme-humidity-oversample!     \ 2x
   3 bme-pressure-oversample!     \ 2x
   4 bme-temperature-oversample!  \ 2x
-  \ TODO fix temp offset
   0 bme-temp-offset!
   2 bme-filter!                  \ 3
   true bme-gas-status!           \ enable gas

@@ -14,7 +14,6 @@
 \   starting with the highest non-zero group
 \ - when emitting the last byte for the lowest bits, set the top bit of the byte
 \ - the value zero encodes to 0x80
-\
 
 \ Definitions to emit 32-bit ints as varints into the print buffer
 
@@ -77,4 +76,4 @@
   var-init begin var> while . repeat ;
 
 \ ( varint end, size: ) here dup hex. swap - .
-compiletoram? not [if]  cornerstone <<<varint>>> compiletoram [then]
+compiletoram? not [if]  cornerstone <<<varint>>> [then]

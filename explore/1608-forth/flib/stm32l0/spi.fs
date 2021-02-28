@@ -35,9 +35,6 @@ $40013000 constant SPI1
 : +spi ( -- ) $10000 ssel.bit @ lshift ssel.addr @ ! inline ;  \ select SPI
 : -spi ( -- )      1 ssel.bit @ lshift ssel.addr @ ! inline ;  \ deselect SPI
 
-: spi-wait ( -- )
-  begin SPI:RXNE bit SPI1-SR bit@ not while yield repeat
-  ;
 : >spi> ( c -- c )  \ hardware SPI, 8 bits
   SPI1-DR !  begin SPI1-SR @ 1 and until  SPI1-DR @ ;
 

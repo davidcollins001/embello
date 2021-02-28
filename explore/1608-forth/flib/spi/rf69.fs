@@ -1,8 +1,5 @@
 \ rf69 driver
 
-\ ******** UPDATED ********
-\ ******** FLASHED ********
-
 \ TODO only read sent bytes from radio not entire buffer
 
 \ --------------------------------------------------
@@ -36,29 +33,29 @@
 3 2 lshift constant RF:M_TX
 4 2 lshift constant RF:M_RX
 
-       $C2 constant RF:START_TX
-       $42 constant RF:STOP_TX
-       $80 constant RF:RCCALSTART
+       \ $C2 constant RF:START_TX
+       \ $42 constant RF:STOP_TX
+       \ $80 constant RF:RCCALSTART
 
      7 bit constant RF:IRQ1_MRDY
-     6 bit constant RF:IRQ1_RXRDY
-     5 bit constant RF:IRQ1_TXRDY
-     4 bit constant RF:IRQ1_PLLLOCK
-     3 bit constant RF:IRQ1_RSSI
-     2 bit constant RF:IRQ1_TIMEOUT
-     1 bit constant RF:IRQ1_AUTO
-     0 bit constant RF:IRQ1_SYNC
+     \ 6 bit constant RF:IRQ1_RXRDY
+     \ 5 bit constant RF:IRQ1_TXRDY
+     \ 4 bit constant RF:IRQ1_PLLLOCK
+     \ 3 bit constant RF:IRQ1_RSSI
+     \ 2 bit constant RF:IRQ1_TIMEOUT
+     \ 1 bit constant RF:IRQ1_AUTO
+     \ 0 bit constant RF:IRQ1_SYNC
 
-     7 bit constant RF:IRQ2_FIFO_FULL
-     6 bit constant RF:IRQ2_FIFO_NE
-     5 bit constant RF:IRQ2_FIFO_LEVEL
-     4 bit constant RF:IRQ2_FIFO_OVERRUN
-     3 bit constant RF:IRQ2_SENT
-     2 bit constant RF:IRQ2_RECVD
-     1 bit constant RF:IRQ2_CRCOK
+     \ 7 bit constant RF:IRQ2_FIFO_FULL
+     \ 6 bit constant RF:IRQ2_FIFO_NE
+     \ 5 bit constant RF:IRQ2_FIFO_LEVEL
+     \ 4 bit constant RF:IRQ2_FIFO_OVERRUN
+     \ 3 bit constant RF:IRQ2_SENT
+     \ 2 bit constant RF:IRQ2_RECVD
+     \ 1 bit constant RF:IRQ2_CRCOK
 
         66 constant RF:MAXDATA
-		31 constant RF:MAXPOWER
+        31 constant RF:MAXPOWER
 
          0 variable rf.mode       \ last set chip mode
 RF:M_STDBY variable rf.idle-mode  \ default idle mode
@@ -66,7 +63,7 @@ RF:M_STDBY variable rf.idle-mode  \ default idle mode
          0 variable rf.lna        \ Low Noise Amplifier setting (set by AGC)
          0 variable rf.power      \ power setting
          0 variable rf.afc        \ Auto Frequency Control offset
-     false variable rf.recvd      \ flag to show packet was received
+     false variable rf.recvd?     \ flag to show packet was received
      false variable rf.sending    \ flag to show payload is being sent
          0 variable rf.sent#      \ packet sent counter
          0 variable rf.recvd#     \ payload received counter
@@ -112,12 +109,10 @@ decimal
 \  Internal Helpers
 \ --------------------------------------------------
 
-: rf-recvd-s! ( -- )     true    rf.recvd ! ;
-: rf-recvd-c! ( -- )     false   rf.recvd ! ;
-: rf-recvd? ( -- n )             rf.recvd @ ;
-: rf-sending-s! ( -- n ) true  rf.sending ! ;
-: rf-sending-c! ( -- n ) false rf.sending ! ;
-: rf-sending? ( -- n )         rf.sending @ ;
+: rf-recvd-s! ( -- )     true   rf.recvd?  ! ;
+: rf-recvd-c! ( -- )     false  rf.recvd?  ! ;
+: rf-sending-s! ( -- n ) true   rf.sending ! ;
+: rf-sending-c! ( -- n ) false  rf.sending ! ;
 
 \ r/w access to the RF registers
 : rf!@ ( b reg -- b ) +spi >spi >spi> -spi ;
@@ -130,26 +125,10 @@ decimal
 : rf-n!spi ( addr len -- )  \ write N bytes to the FIFO
   +spi RF:FIFO $80 or >spi 0 ?do dup c@ >spi 1+ loop drop -spi
   ;
-: rf>buf ( addr len -- )
-  \ TODO deal with dma config better
-  \ disable minc for tx
-  7 bit DMA1-CCR DMA1:MEM-CHAN dma-reg bic!
+: rf-fifo@ ( buffer len -- ) RF:FIFO spi>buf-dma ;
+: rf-fifo! ( buffer len -- ) RF:FIFO $80 or buf>spi-dma ;
 
-  RF:FIFO spi.cmd !
-  over
-    1   spi.cmd rot ( addr ) +dma-spi  spi-wait
-  ( n ) spi.cmd rot ( addr ) +dma-spi  spi-wait
-  -spi
-  ;
-: buf>rf ( addr len -- )
-  \ use 2 dma operations to send command and data separately
-  RF:FIFO $80 or spi.cmd c!
-         1   spi.cmd  0 +dma-spi  spi-wait
-  swap ( n ) ( addr ) 0 +dma-spi  spi-wait
-  -spi
-  ;
-
-: rf-mode-ready
+: rf-mode-ready ( -- )
   \ TODO interrupts DIO5
   begin  RF:IRQ1 rf@  RF:IRQ1_MRDY and  until
   ;
@@ -193,7 +172,6 @@ decimal
 : rf-pkt# ( -- n )                         \ pkt length, fetch from radio if variable
   RF:PAYLOAD_LEN rf@ RF:MAXDATA min
   ;
-: rf-fifo@ ( -- ) rf.buf rf.fixed-pkt# @ rf>buf ;
 
 : rf-status ( -- )                      \ update status values on sync match
   RF:RSSI rf@  rf.rssi !
@@ -214,27 +192,30 @@ decimal
 : rf-irq-init ( -- )                    \ set up interrupt handler for radio
   ['] rf-irq-handler irq-exti0_1 !
 
-     0 bit RCC-APB2ENR  bis!     \ enable setting SYSCFGEN
-     1 bit RCC_IOPENR   bis!     \ enable GPIO B
-     1 bit RCC_IOPSMENR bis!     \ enable GPIO B during sleep
+   0 bit RCC-APB2ENR  bis!     \ enable setting SYSCFGEN
+   1 bit RCC_IOPENR   bis!     \ enable GPIO B
+   1 bit RCC_IOPSMENR bis!     \ enable GPIO B during sleep
 
-    %001 AFIO-EXTICR1   bis!     \ select P<B>0
-        0 bit EXTI-IMR  bis!     \ enable PB<0>
-        0 bit EXTI-RTSR bis!     \ trigger on PB<0> rising edge
+  %001 AFIO-EXTICR1   bis!     \ select P<B>0
+      0 bit EXTI-IMR  bis!     \ enable PB<0>
+      0 bit EXTI-RTSR bis!     \ trigger on PB<0> rising edge
 
-        5 bit NVIC-EN0R bis!     \ enable EXTI0_1 interrupt 5
-        $0C00 NVIC-IPR1 bis!     \ interrupt priority
+  5 nvic!                      \ enable EXTI0_1 interrupt 5
 
-     IMODE-HIGH PB0 io-mode!
+  IMODE-HIGH PB0 io-mode!
   ;
-: rf-recv-done ( addr -- )              \ userland handler for irq
+
+: rf-recv-done ( addr|0 -- )                 \ userland handler for irq
   rf-status
   rf-idle-mode!
-  rf-fifo@
-  ( addr ) dup if
-    rf.buf ( addr ) swap rf.fixed-pkt# @ move  \ copy data for user if addr provided
-  else
-    drop
+  rf.buf rf.fixed-pkt# @ rf-fifo@
+  ( addr ) ?dup if
+    \ copy data to user buffer
+    \ rf.buf swap ( addr ) rf.fixed-pkt# @ move
+    ( addr ) rf.fixed-pkt# @ DMA1:MEM-CHAN +dma
+    dma-wait -dma-mem
+  \ else
+    \ drop
   then
   rf-recvd-c!
   ;
@@ -244,7 +225,7 @@ decimal
 
 : rf-show-packet ( -- )
   ." RF69 " rf-info space ." ( " rf.rssi @ . ." )" space
-  RF:CONF rf@ 7 bit and 0= if            \ check if payload is fixed/variable
+  RF:CONF rf@ 7 bit and 0= if                \ check if payload is fixed/variable
     RF:PAYLOAD_LEN rf@
   else
     rf.len c@ 1+
@@ -271,12 +252,12 @@ decimal
 \   External API
 \ --------------------------------------------------
 
-: rf-init ( freq group node modem conf -- )       \ init RFM69
+: rf-init ( freq group node modem conf -- )
   spi-init
 
   \ enable dma
-  false DMA1:SPI-RX-CHAN dma-spi-init
-  true  DMA1:SPI-TX-CHAN dma-spi-init
+  true DMA1:SPI-RX-CHAN dma-init
+  true DMA1:SPI-TX-CHAN dma-init
 
   rf-check                                  \ will hang if there is no radio!
 
@@ -289,6 +270,9 @@ decimal
 
   rf-irq-init                               \ setup interrupts for radio
   rf-idle-mode!
+
+  0 rf.buf dma-mem-init                     \ setup dma to copy to user buf
+  1 4 lshift DMA1-CCR  DMA1:MEM-CHAN dma-reg bic!
 
   rf-pkt# rf.fixed-pkt# !                   \ get max payload size
   ;
@@ -335,30 +319,31 @@ decimal
   ;
 
 : rf-recv ( -- n )                      \ set rx mode and return if received packet
-  rf-sending? if
+  rf.sending @ if
     false exit
   then
 
   rf-rx-mode!
   $40 $25 rf!                           \ set trigger for PacketReady on DIO0
 
-  rf-recvd?
+  rf.recvd? @
   ;
 
 : rf-listen ( addr -- )
   cr
   begin
     rf-recv if
-      ( addr ) rf-recv-done
+      dup ( addr ) rf-recv-done
       rf.packet-handler @ execute
     then
   key? until
   rf-idle-mode!
+  drop
   ;
 
 \ variable packet len < 66 per packet - can send 64 bytes
-: rf-send ( buffer len -- n )           \ send out one packet for node
-  rf-sending? if                        \ still sending packet drop stack and return
+: rf-send ( buffer len -- ? )           \ send out one packet for node
+  rf.sending @ if                       \ still sending packet drop stack and return
     2drop false  exit
   then
   rf-idle-mode!
@@ -366,7 +351,7 @@ decimal
   $0 $25 rf!                            \ set trigger for PacketReady on DIO0
   rf-sending-s!
 
-  ( buffer len ) buf>rf
+  ( buffer len ) rf-fifo!
   rf-tx-mode!
   true
   ;

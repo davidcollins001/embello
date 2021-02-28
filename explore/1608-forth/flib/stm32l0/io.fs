@@ -19,12 +19,6 @@ $50000000 constant GPIO-BASE
       $20 constant GPIO.AFRL    \ Reset 0 Alternate function  low register
       $24 constant GPIO.AFRH    \ Reset 0 Alternate function high register
 
-: nvic! ( irq-pos -- )                                      \ enable interrupt
-      dup ( irq-pos ) bit NVIC-EN0R   bis!
-  $C over ( irq-pos ) 4 mod 4 * lshift
-          ( irq-pos ) 4 / cells NVIC-IPR1 + bis!
-  ;
-
 : bit ( u -- u )  \ turn a bit position into a single-bit mask
   1 swap lshift  1-foldable ;
 : bit! ( mask addr f -- )  \ set or clear specified bit(s)

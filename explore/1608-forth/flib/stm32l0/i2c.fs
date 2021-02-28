@@ -50,59 +50,69 @@ $40005400 constant I2C1
 
 : i2c++ ( -- addr )  i2c.ptr @  dup 1+ i2c.ptr ! ;
 
-: >i2c ( u -- )  i2c++ c! ;
-: i2c> ( -- u )  i2c++ c@ ;
-: i2c>h ( -- u )  i2c> i2c> 8 lshift or ;
-
+: *i2c! ( u -- )  i2c++ c! ;
+: *i2c@ ( -- u )  i2c++ c@ ;
+: i2c>h ( -- u )  *i2c@ *i2c@ 8 lshift or ;
 
 : i2c-start ( rd -- )
   if 10 bit I2C1-CR2 bis! then  \ RD_WRN
   13 bit I2C1-CR2 bis!  \ START
-;
+	;
 
 : i2c-stop  ( -- )
   14 bit I2C1-CR2 bis!  \ STOP
   begin 15 bit I2C1-ISR bit@ not until  \ !BUSY
-;
+	;
+
+: +i2c          0 bit I2C1-CR1 bis! ;            \ toggle PE high to enable
+: -i2c i2c-stop 0 bit I2C1-CR1 bic! i2c-reset ;  \ toggle PE low to disable
 
 : i2c-setn ( u -- )  \ prepare for N-byte transfer and reset buffer pointer
   16 lshift I2C1-CR2 @ $FF00FFFF and or I2C1-CR2 !  i2c-reset ;
 
-: i2c-wr ( -- )  \ send bytes to the I2C interface
+: >i2c ( b -- )  \ send bytes to the I2C interface
+  1 i2c-setn  0 i2c-start
+  I2C1-TXDR c!
+  begin %1011001 I2C1-ISR bit@ until  \ wait for TCR, STOPF, NACKF, or TXE
+  ;
+: i2c> ( -- b )  \ receive bytes from the I2C interface
+  1 i2c-setn  1 i2c-start
+  begin %1011100 I2C1-ISR bit@ until  \ wait for TCR, STOPF, NACKF, or RXNE
+  I2C1-RXDR c@
+  ;
+
+: >i2cN ( n -- )  \ send bytes to the I2C interface
+  ( n ) i2c-setn  0 i2c-start
   begin
     begin %1011001 I2C1-ISR bit@ until  \ wait for TCR, STOPF, NACKF, or TXE
   %1011000 I2C1-ISR bit@ not while  \ while !TCR, !STOPF, and !NACKF
-    i2c> I2C1-TXDR c!
+    *i2c@ I2C1-TXDR c!
   repeat
-;
-
-: i2c-rd ( -- )  \ receive bytes from the I2C interface
+  ;
+: i2cN> ( n -- )  \ receive bytes from the I2C interface
+  ( n ) i2c-setn  1 i2c-start
   begin
     begin %1011100 I2C1-ISR bit@ until  \ wait for TCR, STOPF, NACKF, or RXNE
   2 bit I2C1-ISR bit@ while  \ while RXNE
-    I2C1-RXDR c@ >i2c
+    I2C1-RXDR c@ *i2c!
   repeat ;
 
+\ TODO replace with version taking a buffer rather than using internal buffer
 \ there are 4 cases:
 \   tx>0 rx>0 : START - tx - RESTART - rx - STOP
 \   tx>0 rx=0 : START - tx - STOP
 \   tx=0 rx>0 : START - rx - STOP
 \   tx=0 rx=0 : START - STOP          (used for presence detection)
-
 : i2c-xfer ( u -- nak )
-  0 bit I2C1-CR1 bic!               \ toggle PE high to enable
-  i2c.ptr @ i2c.buf - ?dup if
-    i2c-setn  0 i2c-start  i2c-wr   \ tx>0
-  else
-    dup 0= if 0 i2c-start then      \ tx=0 rx=0
-  then
-  ?dup if
-    i2c-setn  1 i2c-start  i2c-rd   \ rx>0
-  then
-  i2c-stop i2c-reset
+  +i2c
+
+  i2c.ptr @ i2c.buf -
+  ( n ) ?dup if >i2cN then          \ tx>0
+  ( u ) ?dup if i2cN> then          \ rx>0
+
   4 bit I2C1-ISR bit@ 0<>           \ NAKF
-  0 bit I2C1-CR1 bis!               \ toggle PE high to disable
-;
+  -i2c
+  ;
 
 : i2c. ( -- )  \ scan and report all I2C devices on the bus
   128 0 do
