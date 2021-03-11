@@ -9,7 +9,7 @@ PA3 variable ssel
 PA5 constant SCLK
 PA7 constant MOSI
 
-include ../../../../embello/explore/1608-forth/flib/any/spi-bb.fs
+include ../any/spi-bb.fs
 
 
 \ //the opcodes for the MAX7221 and MAX7219
@@ -62,7 +62,7 @@ true variable md.reverse?
   loop
   ;
 
-: md-clear ( dev -- ) 8 * md.data 8 0 fill md-update ;
+: md-clear ( -- ) md.data md.devices# @ 8 * 0 fill md-update ;
 : md-shutdown ( ? dev -- ) swap not MD:SHUTDOWN rot ( dev ) md! ;
 : md-off  ( dev -- ) 			 0 MD:SHUTDOWN rot ( dev ) md! ;
 : md-on   ( dev -- ) 			 1 MD:SHUTDOWN rot ( dev ) md! ;
@@ -117,9 +117,9 @@ true variable md.reverse?
 : md-scroll ( addr len -- )
   ( len ) 0 do
     dup ( addr ) i + c@
-      cr
+      ( cr )
       8 0 do
-        dup ascii i + dup hex. c@ md-shift-row
+        dup ascii i + ( dup hex. ) c@ md-shift-row
         md.scroll-ms @ ms
       loop
       drop

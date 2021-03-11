@@ -16,6 +16,16 @@ hex
   $4C c, $75 c, $6B c, $65 c, $00 c,
 decimal
 
+\ asks the user for text to display - max 64 chars
+: display-text ( -- )
+  1 md-init
+  ." Enter string for display: "
+  tib 64 accept
+  \ add space to end so last letter scrolls off display
+  dup tib + $20 swap c! 1+
+  tib swap ( len ) md-scroll
+  ;
+
 \ ------------------------------------------------------------------------------
 
 \ count down from 9
