@@ -13,7 +13,7 @@ $40012400 constant ADC1
     ADC1 $0B4 + constant ADC-CALFACT
     ADC1 $308 + constant ADC-CCR
 
-false variable adc.init         \ guard adc init multiple times - can only happen once
+false variable adc.init?         \ guard adc init multiple times - can only happen once
 
 : adc? ( -- )
   ADC1
@@ -41,16 +41,16 @@ false variable adc.init         \ guard adc init multiple times - can only happe
 
 : adc-init ( -- )  \ initialise ADC
 	\ can't call this twice, recalibration will hang!
-  adc.init @ not if
+  adc.init? @ not if
     9 bit RCC-APB2ENR bis!  \ set ADCEN
     adc-calib  1 ADC-CR !   \ perform calibration, then set ADEN to enable ADC
     adc-once drop
-    true adc.init !
+    true adc.init? !
   then ;
 
 : adc-deinit ( -- )  \ de-initialise ADC
   1 bit ADC-CR bis! 9 bit RCC-APB2ENR bic!
-	false adc.init ! ;
+	false adc.init? ! ;
 
 : adc ( pin -- u )  \ read ADC value 2x to avoid chip erratum
   \ IMODE-ADC over io-mode!
