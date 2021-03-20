@@ -2,7 +2,7 @@
 \ adapted from http://excamera.com/sphinx/article-forth-i2c.html
 \
 \ This driver is master-only. It supports clock stretching.
-\ There have to be 1..10 kÎ© resistors on SDA and SCL to pull them up to idle state.
+\ There have to be 1..10 kO© resistors on SDA and SCL to pull them up to idle state.
 
 [ifndef] SCL  PB6 constant SCL  [then]
 [ifndef] SDA  PB7 constant SDA  [then]
@@ -20,7 +20,7 @@
   [ifdef] I2C.DELAY  I2C.DELAY 0 do loop  [then] inline ;
 
 : SCL-ios! ( -- ) \ raise clock
-  SCL ios! 
+  SCL ios!
   begin SCL io@ until \ clock stretching to finish
 ;
 
@@ -87,3 +87,5 @@
       then
     loop
   16 +loop ;
+
+compiletoram? not [if]  cornerstone <<<i2c>>> [then]

@@ -5,9 +5,9 @@ include font8x8.fs
 
 \ [ifndef] ssel  PA3 variable ssel  [then]  \ can be changed at run time
 \ set up bit-banged spi on PA3
-PA3 variable ssel
-PA5 constant SCLK
-PA7 constant MOSI
+[ifndef] ssel PA3 variable ssel [then]
+[ifndef] SCLK PA5 constant SCLK [then]
+[ifndef] MOSI PA7 constant MOSI [then]
 
 include ../any/spi-bb.fs
 
@@ -133,3 +133,13 @@ true variable md.reverse?
   ;
 
 : md-digit! ( n dev -- ) swap $30 + swap md-char! ;
+
+\ asks the user for text to display - max 64 chars
+: md-scroll-text ( n -- )
+  ( n ) md-init
+  ." Enter string for display: "
+  tib 64 accept
+  \ add space to end so last letter scrolls off display
+  dup tib + $20 swap c! 1+
+  tib swap ( len ) md-scroll
+  ;
