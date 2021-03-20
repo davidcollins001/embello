@@ -56,22 +56,6 @@ count @ buffer: buf2
          buf2 66 RF:FIFO spi>buf-dma       cr ." >dma> " ." buf2 " buf2 show
   ;
 
-: mem-test
-	reset
-  cr buf1 show cr buf2 show
-
-  buf2 buf1 dma-mem-init
-  buf2 66 DMA1:MEM-CHAN +dma dma-wait DMA1:MEM-CHAN -dma
-
-  cr buf2 show
-
-  reset
-  0 buf1 dma-mem-init
-  buf2 66 DMA1:MEM-CHAN +dma dma-wait -dma-mem
-  cr buf2 show
-  ;
-
 spi-test-init
-cr ." >>> " mem-test
 cr ." >>> " spi-test
 cr ." >>> " buf-test

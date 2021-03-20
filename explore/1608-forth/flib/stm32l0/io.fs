@@ -1,9 +1,5 @@
 \ I/O pin primitives
 
-\ TODO need to move registers to device specific location
-$E000E100  constant NVIC-EN0R           \ IRQ 0 to 31 Set Enable Register
-NVIC-EN0R $304 + constant NVIC-IPR1     \ interrupt priority
-
 $50000000 constant GPIO-BASE
       $00 constant GPIO.MODER   \ Reset 0 Port Mode Register
                                 \   00=Input  01=Output  10=Alternate  11=Analog

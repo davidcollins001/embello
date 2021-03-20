@@ -17,7 +17,7 @@ $40013000 constant SPI1
 \    SPI1 $14 + constant SPI1-RXCRCR
 \    SPI1 $18 + constant SPI1-TXCRCR
 
-1  constant SPI:RXNE
+0  constant SPI:RXNE
 
 : spi? ( -- )
   SPI1

@@ -16,6 +16,10 @@
 : io.all ( -- )  \ display all the readable GPIO registers
   IO-PORTS 0 do i 0 io io. loop ;
 
+\ TODO need to move registers to device specific location
+$E000E100  constant NVIC-EN0R           \ IRQ 0 to 31 Set Enable Register
+NVIC-EN0R $304 + constant NVIC-IPR1     \ interrupt priority
+
 $40010000 constant AFIO
 \    AFIO $4 + constant AFIO-MAPR
     AFIO  $8 + constant AFIO-EXTICR1
