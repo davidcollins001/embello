@@ -12,7 +12,11 @@
   drop flash-kb 128 <= if 1024 else 2048 then ;
 
 : io.all ( -- )  \ display all the readable GPIO registers
-  io-ports 0 do i 0 io io. loop ;
+  ( io-ports ) 6 ( ? ) 0 do i 0 io io. loop ;
+
+\ TODO need to move registers to device specific location
+$E000E100  constant NVIC-EN0R           \ IRQ 0 to 31 Set Enable Register
+NVIC-EN0R $304 + constant NVIC-IPR1     \ interrupt priority
 
 $40010000 constant AFIO
      AFIO $4 + constant AFIO-MAPR

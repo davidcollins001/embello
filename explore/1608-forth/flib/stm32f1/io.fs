@@ -1,5 +1,7 @@
 \ I/O pin primitives
 
+$E000E100 constant NVIC-EN0R \ IRQ 0 to 31 Set Enable Register
+
 $40010800 constant GPIO-BASE
       $00 constant GPIO.CRL   \ reset $44444444 port Conf Register Low
       $04 constant GPIO.CRH   \ reset $44444444 port Conf Register High

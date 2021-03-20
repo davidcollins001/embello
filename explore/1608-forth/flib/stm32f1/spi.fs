@@ -11,6 +11,8 @@ $40013000 constant SPI1
      SPI1 $8 + constant SPI1-SR
      SPI1 $C + constant SPI1-DR
 
+0  constant SPI:RXNE
+
 : spi. ( -- )  \ display SPI hardware registers
   cr ." CR1 " SPI1-CR1 @ h.4
     ."  CR2 " SPI1-CR2 @ h.4
@@ -26,6 +28,12 @@ $40013000 constant SPI1
 : spi> ( -- c ) 0 >spi> ;  \ read byte from SPI
 : >spi ( c -- ) >spi> drop ;  \ write byte to SPI
 
+\ ===== initialization
+
+: spi!ssel ( ssel -- ) \ set chip-select pin, e.g. "PA4 spi!ssel"
+  ssel !
+  ;
+
 : spi-init ( -- )  \ set up hardware SPI
   OMODE-PP    ssel @ io-mode! -spi
   OMODE-AF-PP SCLK   io-mode!
@@ -37,3 +45,5 @@ $40013000 constant SPI1
   SPI1-SR @ drop  \ appears to be needed to avoid hang in some cases
   2 bit SPI1-CR2 bis!  \ SS output enable
 ;
+
+compiletoram? not [if]  cornerstone <<<spi>>> [then]
