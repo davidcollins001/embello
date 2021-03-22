@@ -40,7 +40,7 @@ include ../flib/mecrisp/multi.fs
   jtag-deinit  \ disable JTAG, we only need SWD
   OMODE-PP LED io-mode!
   1000 systick-hz
-  hello ." ok." cr
+  \ hello ." ok." cr
 ;
 
 : rx-connected? ( -- f )  \ true if RX is connected (and idle)
