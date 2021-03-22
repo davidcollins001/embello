@@ -10,7 +10,7 @@ include ../flib/mecrisp/quotation.fs
 include ../flib/mecrisp/hexdump.fs
 include ../flib/stm32f1/clock.fs
 include ../flib/stm32f1/io.fs
-include ../flib/pkg/pins48.fs
+include ../flib/pkg/pins64.fs
 include ../flib/stm32f1/hal.fs
 include ../flib/stm32f1/timer.fs
 include ../flib/stm32f1/pwm.fs
@@ -29,25 +29,16 @@ include ../flib/mecrisp/multi.fs
           ( irq-pos ) 4 / cells NVIC-IPR1 + bis!
   ;
 
-: jtag-deinit ( -- )  \ disable JTAG on PB3 PB4 PA15
-  25 bit AFIO-MAPR bis! ;
-: swd-deinit ( -- )  \ disable JTAG as well as PA13 and PA14
-  AFIO-MAPR @ %111 24 lshift bic 26 bit or AFIO-MAPR ! ;
-
-: list ( -- )  \ list all words in dictionary, short form
-  cr dictionarystart begin
-      dup 6 + ctype space
-        dictionarynext until drop ;
-
 : hello ( -- ) flash-kb . ." KB <bpx> " hwid hex.
   $10000 compiletoflash here -  flashvar-here compiletoram here -
   ." ram/flash: " . . ." free " ;
 
 : init ( -- )  \ board initialisation
-  \ init  \ this is essential to start up USB comms!
+  init  \ this is essential to start up USB comms!
   ['] ct-irq irq-fault !  \ show call trace in unhandled exceptions
+  $00 hex.empty !  \ empty flash shows up as $00 iso $FF on these chips
   jtag-deinit  \ disable JTAG, we only need SWD
-  IMODE-PULL LED io-mode!
+  OMODE-PP LED io-mode!
   1000 systick-hz
   hello ." ok." cr
 ;
@@ -68,7 +59,6 @@ include ../flib/mecrisp/multi.fs
 : unattended
   rx-connected? if quit then \ return to command prompt
   ['] fake-key? hook-key? ! ;
-
 
 cornerstone <<<board>>>
 hello

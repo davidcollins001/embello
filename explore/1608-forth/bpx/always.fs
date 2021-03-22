@@ -9,4 +9,3 @@ compiletoflash
 
 ( flash use: ) here hex.
 cornerstone eraseflash
-compiletoram
