@@ -18,8 +18,8 @@ count @ buffer: buf2
 : spi-test-init
   led-off
 
-  true  DMA1:SPI-RX-CHAN dma-init
-  true  DMA1:SPI-TX-CHAN dma-init
+  true  DMA1:SPI1-RX-CHAN dma-init
+  true  DMA1:SPI1-TX-CHAN dma-init
   ;
 
 : mem-test

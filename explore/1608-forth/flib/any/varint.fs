@@ -41,13 +41,13 @@
       0 variable pkt.ptr  \ current position in this packet buffer
 
 : +pkt ( n -- )  \ append 32-bit signed value to packet
-  pkt.ptr @ ! 4 pkt.ptr +! ;
+  pkt.ptr @ ! 1 cells pkt.ptr +! ;
 
 : <pkt ( format -- )  \ start collecting values
   pkt.buf pkt.ptr ! +pkt ;
 : pkt> ( -- addr n )  \ output address and lenth of encoded packet
   <v
-    pkt.ptr @  begin  4 - dup @ >var  dup pkt.buf u<= until  drop
+    pkt.ptr @  begin  1 cells - dup @ >var  dup pkt.buf u<= until  drop
   v> ;
 
 : *++ ( addr -- c )  dup @ c@  1 rot +! ;

@@ -15,11 +15,16 @@
   ( io-ports ) 6 ( ? ) 0 do i 0 io io. loop ;
 
 \ TODO need to move registers to device specific location
-$E000E100  constant NVIC-EN0R           \ IRQ 0 to 31 Set Enable Register
+$E000E100  constant NVIC-EN0R           \ IRQ 0 to 31 Set Enable Register - NVIC-ISER0
 NVIC-EN0R $304 + constant NVIC-IPR1     \ interrupt priority
+\ $E000E100  constant NVIC-EN1R           \ IRQ 32 to 63 Set Enable Register - NVIC-ISER1
 
 $40010000 constant AFIO
-     AFIO $4 + constant AFIO-MAPR
+     AFIO  $4 + constant AFIO-MAPR
+     AFIO  $8 + constant AFIO-EXTICR1
+     AFIO  $C + constant AFIO-EXTICR2
+     AFIO $10 + constant AFIO-EXTICR3
+     AFIO $14 + constant AFIO-EXTICR4
 
 $40013800 constant USART1
    USART1 $8 + constant USART1-BRR
@@ -34,6 +39,14 @@ $40021000 constant RCC
 
 $40022000 constant FLASH
     FLASH $0 + constant FLASH-ACR
+
+$40010400 constant EXTI
+     EXTI $00 + constant EXTI-IMR
+     EXTI $04 + constant EXTI-EMR
+     EXTI $08 + constant EXTI-RTSR
+     EXTI $0C + constant EXTI-FTSR
+     EXTI $10 + constant EXTI-SWIER
+     EXTI $14 + constant EXTI-PR
 
 : jtag-deinit ( -- )  \ disable JTAG on PB3 PB4 PA15
   25 bit AFIO-MAPR bis! ;

@@ -48,11 +48,11 @@ count @ buffer: buf1
    \ cr ." buf2 " buf2 show
    \ reset
 
-   \ 40 40 DMA1:SPI-RX-CHAN +dma-spi
+   \ 40 40 DMA1:SPI1-RX-CHAN +dma-spi
    \ cr 111 . .s
-   \ 2 2 DMA1:SPI-RX-CHAN +dma-spi
+   \ 2 2 DMA1:SPI1-RX-CHAN +dma-spi
 
-   \ DMA1-CCR DMA1:SPI-RX-CHAN dma-reg @ .
+   \ DMA1-CCR DMA1:SPI1-RX-CHAN dma-reg @ .
    \ DMA1-CCR DMA1:TX-CHAN dma-reg @ .
 
    \ ." rx "

@@ -1,5 +1,10 @@
 \ frozen application, this runs tests and wipes to a clean slate if they pass
 
+\ reflash from laptop
+\ sudo python2 Downloads/stm32loader.py -e -p /dev/cuaU0 -w -v -b 9600 \
+\   tmp/mecrisp-stellaris-2.5.6/mecrisp-stellaris-source/stm32f103/mecrisp-stellaris-stm32f103.bin
+\ python -m serial.tools.miniterm --raw /dev/cuaU0 115200
+
 compiletoflash
 
 include always.fs
@@ -36,7 +41,6 @@ include ../flib/stm32f1/usb.fs
 ( usb end: ) here hex.
 cornerstone eraseflash
 
-\ include always.fs
 include board.fs
 include core.fs
 

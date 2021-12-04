@@ -2,10 +2,11 @@
 include font8x8.fs
 
 \ https://github.com/wayoda/LedControl/blob/master/src/LedControl.cpp
+\ https://justanotherelectronicsblog.com/?p=201
 
-\ [ifndef] ssel  PA3 variable ssel  [then]  \ can be changed at run time
 \ set up bit-banged spi on PA3
-[ifndef] ssel PA3 variable ssel [then]
+\ [ifndef] ssel  PA3 variable ssel  [then]  \ can be changed at run time
+[ifndef] ssel PA4 variable ssel [then]
 [ifndef] SCLK PA5 constant SCLK [then]
 [ifndef] MOSI PA7 constant MOSI [then]
 
@@ -54,6 +55,7 @@ true variable md.reverse?
   md.devices# @ 0 do
     8 0 do
       \ send opcode/digit and data value
+      \ TODO should this be outside loop?
       +spi
       i 1+ >spi md.data i + c@
       md.reverse? @ if ascii-rev c@ then >spi

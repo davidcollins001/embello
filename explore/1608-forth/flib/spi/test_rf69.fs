@@ -9,37 +9,39 @@ count @ buffer: buf2
 : rfshow ( -- )
 	rf-show-packet
   buf1 c@ 1+ count !
-	buf1 show
+	buf1 show cr
 	;
 
 \ variable packet len < 66 per packet - can send 64 bytes
 
-: tx-test
-  86926 $B6 30 rf:GFSK_Rb250Fd250 RF:INIT rf-init
+: tx-test ( n -- )
+  86826 $A6 20 rf:GFSK_Rb250Fd250 RF:INIT rf-init
   \ 0 rf.buf 4 + dma-mem-init
   \ 1 4 lshift DMA1-CCR  DMA1:MEM-CHAN dma-reg bic!
-	reset
+	\ reset
 
-  35992 50224 101890 1919 18 97 113
-  hwid <pkt  7 0 do +pkt loop  pkt>
+  \ 35992 50224 101890 1919 18 97 113
+  \ hwid <pkt  7 0 do +pkt loop  pkt>
 
-  rf.buf 4 + swap move
+  \ rf.buf 4 + swap move
 	\ ( addr n ) DMA1:MEM-CHAN +dma
 
-  24  rf.buf c!
-  $b  rf.buf 1+ c!
-  30  rf.buf 2+ c!
+  5   rf.buf c!
+  $A  rf.buf 1+ c!
+  $14 rf.buf 2+ c!
   0   rf.buf 3 + c!
+  7   rf.buf 4 + c!
+      rf.buf 5 + c!
 
 	rf.buf rf.buf c@ 1+ rf-send
 	;
 
 : rx-test
-  86926 $B6 30 rf:GFSK_Rb250Fd250 RF:INIT rf-init
+  86826 $A6 10 rf:GFSK_Rb250Fd250 RF:INIT rf-init
 	['] rfshow rf.packet-handler !
 	buf1 rf-listen
 	." done "
 	;
 
-tx-test
+\ 1 tx-test
 \ rx-test

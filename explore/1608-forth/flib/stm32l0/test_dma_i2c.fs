@@ -33,8 +33,8 @@ $77 constant bme:addr
   i2c-init bme-reset
   reset
 
-  true DMA1:I2C-RX-CHAN dma-init
-  true DMA1:I2C-TX-CHAN dma-init
+  true DMA1:I2C1-RX-CHAN dma-init
+  true DMA1:I2C1-TX-CHAN dma-init
   ;
 
 : i2c-test

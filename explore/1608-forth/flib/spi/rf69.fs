@@ -1,10 +1,16 @@
 \ rf69 driver
 
 \ TODO only read sent bytes from radio not entire buffer
+\ TODO rf.group should set $39 - NodeAddress and set %01 in $37
 
 \ --------------------------------------------------
 \  Configuration
 \ --------------------------------------------------
+
+\ RF:IRQ - PB0 jz4
+\ [ifndef] RF:IRQ   PB10 constant RF:IRQ   [then]
+[ifndef] RF:IRQ   PB0  constant RF:IRQ   [then]
+[ifndef] RF:RESET PB11 constant RF:RESET [then]
 
        $00 constant RF:FIFO
        $01 constant RF:OP
@@ -64,7 +70,7 @@ RF:M_STDBY variable rf.idle-mode  \ default idle mode
          0 variable rf.power      \ power setting
          0 variable rf.afc        \ Auto Frequency Control offset
      false variable rf.recvd?     \ flag to show packet was received
-     false variable rf.sending    \ flag to show payload is being sent
+     false variable rf.sending?   \ flag to show payload is being sent
          0 variable rf.sent#      \ packet sent counter
          0 variable rf.recvd#     \ payload received counter
          0 variable rf.fixed-pkt# \ length of fixed packet or 0 for variable
@@ -109,10 +115,7 @@ decimal
 \  Internal Helpers
 \ --------------------------------------------------
 
-: rf-recvd-s! ( -- )     true   rf.recvd?  ! ;
-: rf-recvd-c! ( -- )     false  rf.recvd?  ! ;
-: rf-sending-s! ( -- n ) true   rf.sending ! ;
-: rf-sending-c! ( -- n ) false  rf.sending ! ;
+: rf-sending? ( -- n ) rf.sending? @ ;
 
 \ r/w access to the RF registers
 : rf!@ ( b reg -- b ) +spi >spi >spi> -spi ;
@@ -125,8 +128,8 @@ decimal
 : rf-n!spi ( addr len -- )  \ write N bytes to the FIFO
   +spi RF:FIFO $80 or >spi 0 ?do dup c@ >spi 1+ loop drop -spi
   ;
-: rf-fifo@ ( buffer len -- ) RF:FIFO spi>buf-dma ;
-: rf-fifo! ( buffer len -- ) RF:FIFO $80 or buf>spi-dma ;
+: rf-fifo@ ( buffer len -- ) RF:FIFO        spi2>buf-dma ;
+: rf-fifo! ( buffer len -- ) RF:FIFO $80 or buf>spi2-dma ;
 
 : rf-mode-ready ( -- )
   \ TODO interrupts DIO5
@@ -165,6 +168,7 @@ decimal
   ( u ) dup 2 rshift  RF:FRF 1+ rf!
   ( u ) 6 lshift RF:FRF 2+ rf!
   ;
+\ TODO this should set $39 - NodeAddress
 : rf-group!  ( u -- ) dup rf.group  ! RF:SYN3 rf! ;  \ set the net group (1..250)
 : rf-nodeid! ( u -- ) dup rf.nodeid ! RF:ADDR rf! ; \ set the filter node id
 
@@ -179,30 +183,48 @@ decimal
   RF:AFC rf@  8 lshift  RF:AFC 1+ rf@  or rf.afc !
   ;
 
-: rf-irq-exit ( -- ) 1 bit EXTI-PR bis! ;
 : rf-irq-handler ( -- )      \ setup interrupt from rf69 -> DI00 -> PB0 (exti0) -> jnz
   \ don't check irq flags - type of interrupt was set on tx/rx
   rf.mode @
   case
-    RF:M_TX of rf-idle-mode! 1 rf.sent# +! rf-sending-c! endof
-    RF:M_RX of 1 rf.recvd# +! rf-recvd-s! endof
+    RF:M_TX of rf-idle-mode! 1 rf.sent# +! false  rf.sending? ! endof
+    RF:M_RX of 1 rf.recvd# +! true rf.recvd? endof
   endcase
-  rf-irq-exit
+  1 bit EXTI-PR bis!
+1 . cr
   ;
-: rf-irq-init ( -- )                    \ set up interrupt handler for radio
-  ['] rf-irq-handler irq-exti0_1 !
+\ : rf-irq-init ( -- )                    \ set up interrupt handler for radio - PB0
+  \ \ ['] rf-irq-handler irq-exti0_1 !
 
-   0 bit RCC-APB2ENR  bis!     \ enable setting SYSCFGEN
-   1 bit RCC_IOPENR   bis!     \ enable GPIO B
-   1 bit RCC_IOPSMENR bis!     \ enable GPIO B during sleep
+   \ 0 bit RCC-APB2ENR  bis!     \ enable setting SYSCFGEN
+   \ 1 bit RCC_IOPENR   bis!     \ enable GPIO B
+   \ 1 bit RCC_IOPSMENR bis!     \ enable GPIO B during sleep
 
-  %001 AFIO-EXTICR1   bis!     \ select P<B>0
-      0 bit EXTI-IMR  bis!     \ enable PB<0>
-      0 bit EXTI-RTSR bis!     \ trigger on PB<0> rising edge
+  \ RF:IRQ io-port bit AFIO-EXTICR1  bis!     \ select P<B>0
+  \ RF:IRQ io# bit EXTI-IMR  bis!     \ enable PB<0>
+  \ RF:IRQ io# bit EXTI-RTSR bis!     \ trigger on PB<0> rising edge
 
-  5 nvic!                      \ enable EXTI0_1 interrupt 5
+  \ 5 nvic!                      \ enable EXTI0_1 interrupt 5
 
-  IMODE-HIGH PB0 io-mode!
+  \ IMODE-HIGH PB0 io-mode!
+  \ ;
+: rf-irq-init ( -- )                    \ set up interrupt handler for radio - RF:IRQ
+  ['] rf-irq-handler irq-exti0 ! \ irq-exti10 !
+
+  RF:IRQ io-port bit RCC-APB2ENR  bis!  \ enable GPIO B
+  \ 1 bit RCC_IOPSMENR bis!           \ enable GPIO B during sleep
+
+  RF:IRQ io-port
+  RF:IRQ io# 4 * lshift
+                 AFIO-EXTICR1 bis!    \ enable P<B>x interrupt
+  RF:IRQ io# bit EXTI-IMR     bis!    \ enable PB<x>
+  RF:IRQ io# bit EXTI-RTSR    bis!    \ trigger on PB<x> rising edge
+
+  6 nvic!                           \ enable EXTI0 interrupt 0
+  \ 40 nvic!                          \ enable EXTI10 interrupt 10
+  \ 8 bit NVIC-EN1R bis!  \ enable EXTI15_10 interrupt 40
+
+  IMODE-PULL RF:IRQ io-mode!
   ;
 
 : rf-recv-done ( addr|0 -- )                 \ userland handler for irq
@@ -217,7 +239,7 @@ decimal
   \ else
     \ drop
   then
-  rf-recvd-c!
+  false  rf.recvd?  !
   ;
 
 : rf-info ( -- )  \ display reception parameters as hex string
@@ -253,11 +275,11 @@ decimal
 \ --------------------------------------------------
 
 : rf-init ( freq group node modem conf -- )
-  spi-init
+  spi2-init
 
   \ enable dma
-  true DMA1:SPI-RX-CHAN dma-init
-  true DMA1:SPI-TX-CHAN dma-init
+  false DMA1:SPI2-RX-CHAN dma-init
+  true  DMA1:SPI2-TX-CHAN dma-init
 
   rf-check                                  \ will hang if there is no radio!
 
@@ -291,7 +313,7 @@ decimal
 \ RFM69(C)W only has PA0
 \ RFM69H(C)W has PA1 and PA2
 \ feather wing is RFM69HCW - PA1 and PA2 - don't use PA0
-\ jeenode zero if RFM69CW (probably) - only PA0
+\ jeenode zero is RFM69CW (probably) - only PA0
 \ : rf-power ( power -- )  \ change TX power level (0..31)
 \   \ RF:PA_LEVEL rf@ $E0 and or RF:PA_LEVEL rf!
 \   ;
@@ -319,7 +341,7 @@ decimal
   ;
 
 : rf-recv ( -- n )                      \ set rx mode and return if received packet
-  rf.sending @ if
+  rf.sending? @ if
     false exit
   then
 
@@ -343,18 +365,26 @@ decimal
 
 \ variable packet len < 66 per packet - can send 64 bytes
 : rf-send ( buffer len -- ? )           \ send out one packet for node
-  rf.sending @ if                       \ still sending packet drop stack and return
+  rf.sending? @ if                      \ still sending packet drop stack and return
     2drop false  exit
   then
   rf-idle-mode!
 
   $0 $25 rf!                            \ set trigger for PacketReady on DIO0
-  rf-sending-s!
+  true   rf.sending? !
 
   ( buffer len ) rf-fifo!
   rf-tx-mode!
   true
   ;
+
+: rf-reset ( -- )
+  OMODE-PP    RF:RESET io-mode!
+  RF:RESET ioc!
+  100 ms
+  RF:RESET ios!
+  5 ms
+;
 
 \ : rf-listener-mode! ( on/off -- )
   \ ( flag ) if

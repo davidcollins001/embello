@@ -19,10 +19,10 @@ dup $14 + constant DMA1-CMAR
 drop
 
 1 constant DMA1:MEM-CHAN                    \ dma memory channel
-2 constant DMA1:SPI-RX-CHAN                 \ dma spi rx channel
-3 constant DMA1:SPI-TX-CHAN                 \ dma spi tx channel
-6 constant DMA1:I2C-TX-CHAN                 \ dma i2c tx channel
-7 constant DMA1:I2C-RX-CHAN                 \ dma i2c rx channel
+2 constant DMA1:SPI1-RX-CHAN                 \ dma spi rx channel
+3 constant DMA1:SPI1-TX-CHAN                 \ dma spi tx channel
+6 constant DMA1:I2C1-TX-CHAN                 \ dma i2c tx channel
+7 constant DMA1:I2C1-RX-CHAN                 \ dma i2c rx channel
 
 \ index into channel
 0 constant DMA:STREAM                       \ set dma channel stream
@@ -37,8 +37,8 @@ drop
 false variable dma.complete
 0     variable dma.error
 
-: SPI1_CR2_RXDMAEN   %1 0 lshift SPI1-CR2 bis! ;  \ Rx buffer DMA enable
-: SPI1_CR2_TXDMAEN   %1 1 lshift SPI1-CR2 bis! ;  \ Tx buffer DMA enable
+: SPI1_CR2_RXDMAEN   %1 0  lshift SPI1-CR2 bis! ;  \ Rx buffer DMA enable
+: SPI1_CR2_TXDMAEN   %1 1  lshift SPI1-CR2 bis! ;  \ Tx buffer DMA enable
 : I2C1_CR1_TXDMAEN   %1 14 lshift I2C1-CR1 bis! ;  \ DMA Tx requests  enable
 : I2C1_CR1_RXDMAEN   %1 15 lshift I2C1-CR1 bis! ;  \ DMA Rx requests  enable
 
@@ -54,11 +54,11 @@ create DMA:CHAN-CONF
 \ TODO replace with better
 : dma-conf ( ndx chan -- )
   ( chan ) case
-    DMA1:MEM-CHAN    of 0 endof
-    DMA1:SPI-RX-CHAN of 1 endof
-    DMA1:SPI-TX-CHAN of 2 endof
-    DMA1:I2C-RX-CHAN of 3 endof
-    DMA1:I2C-TX-CHAN of 4 endof
+    DMA1:MEM-CHAN     of 0 endof
+    DMA1:SPI1-RX-CHAN of 1 endof
+    DMA1:SPI1-TX-CHAN of 2 endof
+    DMA1:I2C1-RX-CHAN of 3 endof
+    DMA1:I2C1-TX-CHAN of 4 endof
   endcase
   \ pick desired elem
   DMA:CONF-SZ *
@@ -70,13 +70,13 @@ create DMA:CHAN-CONF
 : -dma ( chan -- ) 0 bit DMA1-CCR rot ( chan ) dma-reg bic! inline ;
 : -dma-mem ( -- ) DMA1:MEM-CHAN -dma inline ;
 : -dma-spi ( -- )
-  DMA1:SPI-TX-CHAN -dma
-  DMA1:SPI-RX-CHAN -dma
+  DMA1:SPI1-TX-CHAN -dma
+  DMA1:SPI1-RX-CHAN -dma
   inline
   ;
 : -dma-i2c ( -- )
-  DMA1:I2C-TX-CHAN -dma
-  DMA1:I2C-RX-CHAN -dma
+  DMA1:I2C1-TX-CHAN -dma
+  DMA1:I2C1-RX-CHAN -dma
   inline
   ;
 : +dma-en ( n chan -- )
@@ -164,7 +164,7 @@ create DMA:CHAN-CONF
 \ master drives read on spi by writing `reg` data n times
 : spi>buf-dma ( addr n reg -- )
   \ disable minc for tx
-  7 bit DMA1-CCR DMA1:SPI-TX-CHAN dma-reg bic!
+  7 bit DMA1-CCR DMA1:SPI1-TX-CHAN dma-reg bic!
 
   ( reg ) spi.tx !
   tuck
@@ -172,17 +172,17 @@ create DMA:CHAN-CONF
 	\ send command byte and discard the initial value
 	spi.tx @ >spi
   \ enable tx + rx transfer
-  ( addr )    ( n ) DMA1:SPI-RX-CHAN  +dma
-  spi.tx swap ( n ) DMA1:SPI-TX-CHAN  +dma dma-wait
+  ( addr )    ( n ) DMA1:SPI1-RX-CHAN  +dma
+  spi.tx swap ( n ) DMA1:SPI1-TX-CHAN  +dma dma-wait
   -dma-spi
   -spi
 
-  7 bit DMA1-CCR DMA1:SPI-TX-CHAN dma-reg bis!
+  7 bit DMA1-CCR DMA1:SPI1-TX-CHAN dma-reg bis!
   ;
 : buf>spi-dma ( addr n reg -- )
   +spi
   ( reg ) >spi
-  ( addr n ) DMA1:SPI-TX-CHAN +dma dma-wait
+  ( addr n ) DMA1:SPI1-TX-CHAN +dma dma-wait
   -dma-spi
   -spi
   ;
@@ -193,12 +193,12 @@ create DMA:CHAN-CONF
 
 : buf>i2c-dma ( addr n -- )
   tuck
-  ( addr n ) DMA1:I2C-TX-CHAN +dma
+  ( addr n ) DMA1:I2C1-TX-CHAN +dma
   ( n ) i2c-setn 0 i2c-start dma-i2c-wait -dma-i2c
   ;
 : i2c>buf-dma ( addr n -- )
   tuck
-  ( addr n ) DMA1:I2C-RX-CHAN +dma
+  ( addr n ) DMA1:I2C1-RX-CHAN +dma
   ( n ) i2c-setn 1 i2c-start dma-i2c-wait -dma-i2c
   ;
 

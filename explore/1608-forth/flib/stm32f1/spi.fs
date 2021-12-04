@@ -16,7 +16,7 @@ $40013000 constant SPI1
 : spi. ( -- )  \ display SPI hardware registers
   cr ." CR1 " SPI1-CR1 @ h.4
     ."  CR2 " SPI1-CR2 @ h.4
-     ."  SR " SPI1-SR @ h.4 ;
+     ."  SR " SPI1-SR  @ h.4 ;
 
 : +spi ( -- ) ssel @ ioc! ;  \ select SPI
 : -spi ( -- ) ssel @ ios! ;  \ deselect SPI

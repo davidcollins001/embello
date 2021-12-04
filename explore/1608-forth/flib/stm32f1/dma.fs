@@ -1,8 +1,12 @@
 \ NOTE requires irq-dma-chX to be enabled in the image which isn't the case by
-\      default
+\      default for stm32f103
 
 \ TODO dma-mem-init and dma-spi-init api don't match
 \ TODO make init take cpar, +dma-en takes cmar??
+\ TODO add i2c>buf-dma for i2c2
+\ TODO can only run 1 dma at a time because of ISR
+\       irq set <channel> bit in dma.complete
+\       -dma disables any channels set
 
 [ifndef] DMA1      $40020000 constant DMA1 [then]
 
@@ -20,11 +24,15 @@ dup $10 + constant DMA1-CPAR
 dup $14 + constant DMA1-CMAR
 drop
 
-0 constant DMA1:MEM-CHAN                    \ dma memory channel
-2 constant DMA1:SPI-RX-CHAN                 \ dma spi rx channel
-3 constant DMA1:SPI-TX-CHAN                 \ dma spi tx channel
-6 constant DMA1:I2C-TX-CHAN                 \ dma i2c tx channel
-7 constant DMA1:I2C-RX-CHAN                 \ dma i2c rx channel
+1 constant DMA1:MEM-CHAN                    \ dma memory channel
+2 constant DMA1:SPI1-RX-CHAN                \ dma spi1 rx channel
+3 constant DMA1:SPI1-TX-CHAN                \ dma spi1 tx channel
+4 constant DMA1:SPI2-RX-CHAN                \ dma spi2 rx channel
+5 constant DMA1:SPI2-TX-CHAN                \ dma spi2 tx channel
+4 constant DMA1:I2C2-TX-CHAN                \ dma i2c2 tx channel
+5 constant DMA1:I2C2-RX-CHAN                \ dma i2c2 rx channel
+6 constant DMA1:I2C1-TX-CHAN                \ dma i2c1 tx channel
+7 constant DMA1:I2C1-RX-CHAN                \ dma i2c1 rx channel
 
 \ index into channel
 0 constant DMA:CPAR                         \ set dma channel stream
@@ -33,13 +41,17 @@ drop
 3 constant DMA:DIR                          \ dma direction
 4 constant DMA:EN-XT                        \ enable dma xt
 
-5 constant DMA:CONF-SZ                      \ number of channel conf items
+5 constant DMA:CONF-LEN                     \ number of channel conf elements
 
 false variable dma.complete
 0     variable dma.error
 
-: SPI1_CR2_RXDMAEN   %1 0 lshift SPI1-CR2 bis! ;  \ Rx buffer DMA enable
-: SPI1_CR2_TXDMAEN   %1 1 lshift SPI1-CR2 bis! ;  \ Tx buffer DMA enable
+: SPI1_CR2_RXDMAEN   %1 0  lshift SPI1-CR2 bis! ;  \ Rx buffer DMA enable
+: SPI1_CR2_TXDMAEN   %1 1  lshift SPI1-CR2 bis! ;  \ Tx buffer DMA enable
+: SPI2_CR2_RXDMAEN   %1 0  lshift SPI2-CR2 bis! ;  \ Rx buffer DMA enable
+: SPI2_CR2_TXDMAEN   %1 1  lshift SPI2-CR2 bis! ;  \ Tx buffer DMA enable
+: I2C2_CR1_TXDMAEN   %1 14 lshift I2C2-CR1 bis! ;  \ DMA Tx requests  enable
+: I2C2_CR1_RXDMAEN   %1 15 lshift I2C2-CR1 bis! ;  \ DMA Rx requests  enable
 : I2C1_CR1_TXDMAEN   %1 14 lshift I2C1-CR1 bis! ;  \ DMA Tx requests  enable
 : I2C1_CR1_RXDMAEN   %1 15 lshift I2C1-CR1 bis! ;  \ DMA Rx requests  enable
 
@@ -49,38 +61,50 @@ create DMA:CHAN-CONF
  0         , 11 , irq-dma_ch1 , DMA:RX , ['] nop ,
  SPI1-DR   , 12 , irq-dma_ch2 , DMA:RX , ['] SPI1_CR2_RXDMAEN ,
  SPI1-DR   , 13 , irq-dma_ch3 , DMA:TX , ['] SPI1_CR2_TXDMAEN ,
- I2C1-RXDR , 14 , irq-dma_ch4 , DMA:TX , ['] I2C1_CR1_TXDMAEN ,
- I2C1-TXDR , 15 , irq-dma_ch5 , DMA:RX , ['] I2C1_CR1_RXDMAEN ,
- I2C1-TXDR , 16 , irq-dma_ch6 , DMA:RX , ['] I2C1_CR1_RXDMAEN ,
- I2C1-TXDR , 17 , irq-dma_ch7 , DMA:TX , ['] I2C1_CR1_TXDMAEN ,
+ SPI2-DR   , 14 , irq-dma_ch4 , DMA:RX , ['] SPI2_CR2_RXDMAEN ,
+ SPI2-DR   , 15 , irq-dma_ch5 , DMA:TX , ['] SPI2_CR2_TXDMAEN ,
+ I2C2-RXDR , 14 , irq-dma_ch4 , DMA:TX , ['] I2C2_CR1_TXDMAEN ,
+ I2C2-TXDR , 15 , irq-dma_ch5 , DMA:RX , ['] I2C2_CR1_RXDMAEN ,
+ I2C1-TXDR , 16 , irq-dma_ch6 , DMA:TX , ['] I2C1_CR1_TXDMAEN ,
+ I2C1-TXDR , 17 , irq-dma_ch7 , DMA:RX , ['] I2C1_CR1_RXDMAEN ,
 
 \ TODO replace with better
 : dma-conf ( ndx chan -- )
+  \ index into DMA:CHAN-CONF
   ( chan ) case
-    DMA1:MEM-CHAN    of 0 endof
-    DMA1:SPI-RX-CHAN of 1 endof
-    DMA1:SPI-TX-CHAN of 2 endof
-    DMA1:I2C-RX-CHAN of 3 endof
-    DMA1:I2C-TX-CHAN of 4 endof
+    DMA1:MEM-CHAN     of 0 endof
+    DMA1:SPI1-RX-CHAN of 1 endof
+    DMA1:SPI1-TX-CHAN of 2 endof
+    DMA1:SPI2-RX-CHAN of 3 endof
+    DMA1:SPI2-TX-CHAN of 4 endof
+    DMA1:I2C2-TX-CHAN of 5 endof
+    DMA1:I2C2-RX-CHAN of 6 endof
+    DMA1:I2C1-TX-CHAN of 7 endof
+    DMA1:I2C1-RX-CHAN of 8 endof
   endcase
   \ pick desired elem
-  DMA:CONF-SZ *
+  DMA:CONF-LEN *
   DMA:CHAN-CONF ( row-ndx ) swap cells +
                 ( col-ndx ) swap cells + @
   ;
 : dma-reg ( reg chan -- addr ) ( reg ) 20 swap ( channel ) 1- * + ;
 
-: -dma ( chan -- ) 0 bit DMA1-CCR rot ( chan ) dma-reg bic! inline ;
-: -dma-mem ( -- ) DMA1:MEM-CHAN -dma inline ;
-: -dma-spi ( -- )
-  DMA1:SPI-TX-CHAN -dma
-  DMA1:SPI-RX-CHAN -dma
-  inline
+: -dma ( chan -- ) 0 bit DMA1-CCR rot ( chan ) dma-reg bic! ; \ inline ;
+: -dma-mem ( -- ) DMA1:MEM-CHAN -dma ; \ inline ;
+: -dma-spi1 ( -- )
+  DMA1:SPI1-TX-CHAN -dma
+  DMA1:SPI1-RX-CHAN -dma
+  \ inline
+  ;
+: -dma-spi2 ( -- )
+  DMA1:SPI2-TX-CHAN -dma
+  DMA1:SPI2-RX-CHAN -dma
+  \ inline
   ;
 : -dma-i2c ( -- )
-  DMA1:I2C-TX-CHAN -dma
-  DMA1:I2C-RX-CHAN -dma
-  inline
+  DMA1:I2C1-TX-CHAN -dma
+  DMA1:I2C1-RX-CHAN -dma
+  \ inline
   ;
 : +dma-en ( n chan -- )
   tuck
@@ -88,12 +112,12 @@ create DMA:CHAN-CONF
   false dma.complete !
   ( n ) DMA1-CNDTR swap ( chan ) dma-reg    !               \ bytes to transfer
   0 bit DMA1-CCR    rot ( chan ) dma-reg bis!               \ enable dma
-  inline
+  \ inline
   ;
 : +dma ( addr n chan -- )
   >r swap
   ( addr ) DMA1-CMAR r@ ( chan ) dma-reg !
-  ( n ) r@ ( chan ) +dma-en
+  ( n ) r@ ( chan )  +dma-en
 
   \ enable chan dma
   DMA:EN-XT r> dma-conf ( dmaen-xt ) execute
@@ -103,11 +127,10 @@ create DMA:CHAN-CONF
 \ wait for dma to complete then wait for i2c to finish
 : dma-i2c-wait ( -- ) dma-wait begin 6 bit I2C1-ISR bit@ until ;
 
-: dma-irq-exit ( -- ) DMA1-ISR @ $1111111 and DMA1-IFCR bis! inline ;  \ clear irq flag
 : dma-irq-handler ( -- )
   $8888888 DMA1-ISR @ and dma.error !                     \ write error channel
+  DMA1-ISR @ $1111111 and DMA1-IFCR bis!                  \ clear irq flag
   true dma.complete !
-  dma-irq-exit
   ;
 : dma-irq! ( chan -- )
   \ for the channel get dma channel in NVIC and irq handler address
@@ -157,14 +180,16 @@ create DMA:CHAN-CONF
 
 0 variable spi.tx
 
-: spi-wait ( -- )
-  begin SPI:RXNE bit SPI1-SR bit@ not while yield repeat
-  ;
+\ TODO use channel to get SPIn-SR
+: spi-wait ( reg -- )
+  begin SPI:RXNE bit over bit@ not while yield repeat drop ;
+: spi1-wait ( -- ) SPI1-SR spi-wait ;
+: spi2-wait ( -- ) SPI2-SR spi-wait ;
 
 \ master drives read on spi by writing `reg` data n times
-: spi>buf-dma ( addr n reg -- )
+: spi2>buf-dma ( addr n reg -- )
   \ disable minc for tx
-  7 bit DMA1-CCR DMA1:SPI-TX-CHAN dma-reg bic!
+  7 bit DMA1-CCR DMA1:SPI2-TX-CHAN dma-reg bic!
 
   ( reg ) spi.tx !
   tuck
@@ -172,20 +197,24 @@ create DMA:CHAN-CONF
 	\ send command byte and discard the initial value
 	spi.tx @ >spi
   \ enable tx + rx transfer
-  ( addr )    ( n ) DMA1:SPI-RX-CHAN  +dma
-  spi.tx swap ( n ) DMA1:SPI-TX-CHAN  +dma dma-wait
-  -dma-spi
+  ( addr )    ( n ) DMA1:SPI2-RX-CHAN +dma
+  spi.tx swap ( n ) DMA1:SPI2-TX-CHAN +dma dma-wait
+  -dma-spi2
   -spi
 
-  7 bit DMA1-CCR DMA1:SPI-TX-CHAN dma-reg bis!
+  7 bit DMA1-CCR DMA1:SPI2-TX-CHAN dma-reg bis!
   ;
-: buf>spi-dma ( addr n reg -- )
+: buf>spi2-dma ( addr n reg -- )
   +spi
   ( reg ) >spi
-  ( addr n ) DMA1:SPI-TX-CHAN +dma dma-wait
-  -dma-spi
+  ( addr n ) DMA1:SPI2-TX-CHAN +dma dma-wait
+  -dma-spi2
   -spi
   ;
+: spi1>buf-dma ( addr n reg -- ) spi>buf-dma ; \ -dma-spi1 -spi ;
+\ : spi2>buf-dma ( addr n reg -- ) spi>buf-dma ; \ -dma-spi2 -spi ;
+: buf>spi1-dma ( addr n reg -- ) buf>spi-dma ; \ -dma-spi1 -spi ;
+\ : buf>spi2-dma ( addr n reg -- ) buf>spi-dma ; \ -dma-spi2 -spi ;
 
 \ --------------------------------------------------
 \   I2C DMA utils
@@ -193,12 +222,12 @@ create DMA:CHAN-CONF
 
 : buf>i2c-dma ( addr n -- )
   tuck
-  ( addr n ) DMA1:I2C-TX-CHAN +dma
+  ( addr n ) DMA1:I2C1-TX-CHAN +dma
   ( n ) i2c-setn 0 i2c-start dma-i2c-wait -dma-i2c
   ;
 : i2c>buf-dma ( addr n -- )
   tuck
-  ( addr n ) DMA1:I2C-RX-CHAN +dma
+  ( addr n ) DMA1:I2C1-RX-CHAN +dma
   ( n ) i2c-setn 1 i2c-start dma-i2c-wait -dma-i2c
   ;
 

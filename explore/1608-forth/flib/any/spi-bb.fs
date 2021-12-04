@@ -1,9 +1,16 @@
 \ bit-banged SPI driver
 
-[ifndef] ssel  PA4 variable ssel  [then]  \ can be changed at run time
-[ifndef] SCLK  PA5 constant SCLK  [then]
-[ifndef] MISO  PA6 constant MISO  [then]
-[ifndef] MOSI  PA7 constant MOSI  [then]
+\ SPI1
+\ [ifndef] ssel  PA4 variable ssel  [then]  \ can be changed at run time
+\ [ifndef] SCLK  PA5 constant SCLK  [then]
+\ [ifndef] MISO  PA6 constant MISO  [then]
+\ [ifndef] MOSI  PA7 constant MOSI  [then]
+
+\ SPI2 - soldering for SPI1/SCLK bad connection
+[ifndef] ssel  PA12 variable ssel  [then]  \ can be changed at run time
+[ifndef] SCLK  PA13 constant SCLK  [then]
+[ifndef] MISO  PA14 constant MISO  [then]
+[ifndef] MOSI  PA15 constant MOSI  [then]
 
 : +spi ( -- ) ssel @ ioc! ;  \ select SPI
 : -spi ( -- ) ssel @ ios! ;  \ deselect SPI

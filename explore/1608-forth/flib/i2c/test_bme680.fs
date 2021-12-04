@@ -75,7 +75,7 @@ $77 constant bme:addr
 
 : bme-init ( -- nak )               \ init the bme680 into continuous mode
   i2c-init
-  true DMA1:I2C-RX-CHAN dma-init
+  true DMA1:I2C1-RX-CHAN dma-init
   bme-reset
   BME:SLEEP_MODE bme-mode!
 
@@ -113,8 +113,8 @@ $77 constant bme:addr
 
   reset
 
-  true DMA1:I2C-RX-CHAN dma-init
-  \ true DMA1:I2C-TX-CHAN dma-init
+  true DMA1:I2C1-RX-CHAN dma-init
+  \ true DMA1:I2C1-TX-CHAN dma-init
   ;
 
 : test-bme-reg ( -- )
