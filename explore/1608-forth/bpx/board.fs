@@ -34,7 +34,7 @@ include ../flib/mecrisp/multi.fs
   ." ram/flash: " . . ." free " ;
 
 : init ( -- )  \ board initialisation
-  init  \ this is essential to start up USB comms!
+  [ifdef] USB-COMM init [then]  \ this is essential to start up USB comms!
   ['] ct-irq irq-fault !  \ show call trace in unhandled exceptions
   $00 hex.empty !  \ empty flash shows up as $00 iso $FF on these chips
   jtag-deinit  \ disable JTAG, we only need SWD
